@@ -14,7 +14,7 @@
     "react-native": "0.86.3"
   },
   "scripts": {
-    "start": "expo start --tunnel",
+    "start": "expo start",
     "start:tunnel": "expo start --tunnel",
     "start:lan": "expo start --lan",
     "android": "expo start --android",
