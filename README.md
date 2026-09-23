@@ -86,6 +86,55 @@ A large **QR code** will appear directly in your terminal.
 
 ---
 
+## 📦 Installing as a Standalone App (Android APK & iOS)
+
+You can run Amazon Scout either in development mode via **Expo Go** or build standalone installer packages.
+
+---
+
+### 🤖 Android: 1-Click Standalone APK (.apk)
+Android allows direct installation (sideloading) of standalone `.apk` files without paying for a Google Play Developer account ($0.00).
+
+1. **Run the APK build command**:
+   ```bash
+   npm run build:android
+   ```
+2. **Log into Expo** (or create a free account at [expo.dev/signup](https://expo.dev/signup) if you don't have one).
+3. EAS will automatically build your standalone `.apk` in the Expo cloud for free.
+4. Once completed (approx. 5–10 minutes), the terminal will provide a **direct download link** and **QR code**.
+5. Scan the QR code or open the link on your Android phone:
+   - Tap **Download**.
+   - Tap the downloaded file to **Install** (if prompted, enable *"Allow from this source"* in Android Settings).
+6. **Done!** The standalone **Amazon Scout** icon will now appear permanently on your Android home screen and app drawer.
+
+---
+
+### 🍏 iOS: Installation Options
+Unlike Android, Apple restricts direct APK-style sideloading. Here are the three ways to run Amazon Scout on your iPhone:
+
+#### Option 1: Expo Go (Recommended — 100% Free & Immediate)
+* Install **Expo Go** from the iOS App Store.
+* Run `npm start` and scan the terminal QR code with your iPhone Camera.
+* **Tip**: You can save a shortcut directly to your iPhone Home Screen via the iOS Shortcuts app or Expo Go bookmark so it launches with one tap.
+
+#### Option 2: Standalone via TestFlight (Requires Apple Developer Account — \$99/yr)
+* If you have an active Apple Developer Program membership:
+  ```bash
+  npm run build:ios
+  ```
+* EAS will build the `.ipa` and upload it directly to your Apple Developer TestFlight account.
+* You and your spouse can then install the free **TestFlight** app from the App Store and install Amazon Scout directly with zero wires.
+
+#### Option 3: Free Personal Sideloading (Using Sideloadly or AltStore — \$0.00)
+* If you do not have an Apple Developer account, you can install the standalone app using your normal, free Apple ID:
+  1. Build an iOS build with EAS: `npm run build:ios`
+  2. Download **[Sideloadly](https://sideloadly.io/)** (free for Windows).
+  3. Plug your iPhone into your Windows PC with a USB cable.
+  4. Drag the downloaded `.ipa` file into Sideloadly, enter your standard Apple ID, and click **Start**.
+  5. Sideloadly signs and installs the standalone app icon directly onto your iPhone! *(Note: Free personal Apple IDs require re-signing every 7 days).*
+
+---
+
 ## 🐙 How to Push to GitHub
 
 You can either have the AI assistant push directly using a GitHub Token, or push manually in 1 minute:
@@ -102,6 +151,6 @@ In your terminal, run:
 ```bash
 git add .
 git commit -m "Update: 100% Serverless architecture with embedded gating database"
-git remote add origin https://github.com/YOUR_USERNAME/amazon-scout-app.git
-git push -u origin main
+git push origin main
 ```
+

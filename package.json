@@ -6,6 +6,8 @@
     "start": "npm --prefix client start",
     "tunnel": "npm --prefix client run start:tunnel",
     "lan": "npm --prefix client run start:lan",
+    "build:android": "npm --prefix client run build:android",
+    "build:ios": "npm --prefix client run build:ios",
     "test": "node server/test-scan.js"
   },
   "keywords": [

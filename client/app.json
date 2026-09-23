@@ -8,11 +8,13 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.amazonscout.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Amazon Scout requires camera access to scan barcodes and ISBNs quickly on store shelves."
       }
     },
     "android": {
+      "package": "com.amazonscout.app",
       "adaptiveIcon": {
         "backgroundColor": "#1A202C",
         "foregroundImage": "./assets/android-icon-foreground.png",
