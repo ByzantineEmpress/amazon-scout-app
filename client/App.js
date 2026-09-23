@@ -140,8 +140,18 @@ export default function App() {
     }, 400);
   };
 
+  useEffect(() => {
+    if (permission && !permission.granted) {
+      requestPermission();
+    }
+  }, [permission]);
+
   if (!permission) {
-    return <View style={styles.centerContainer}><ActivityIndicator size="large" color="#3182CE" /></View>;
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#3182CE" />
+      </View>
+    );
   }
 
   if (!permission.granted) {
@@ -159,78 +169,83 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+    <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      {/* Top HUD Bar */}
-      <View style={styles.topHud}>
-        <TouchableOpacity
-          style={styles.hudButton}
-          onPress={() => setTorch(!torch)}
-        >
-          <Text style={styles.hudButtonText}>{torch ? '🔦 On' : '🔦 Off'}</Text>
-        </TouchableOpacity>
-
-        {offlineCount > 0 ? (
-          <TouchableOpacity
-            style={styles.offlinePill}
-            onPress={() => setOfflineVisible(true)}
-          >
-            <Text style={styles.offlinePillText}>📡 Offline: {offlineCount}</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        <View style={styles.hudRightGroup}>
+        {/* Top HUD Bar */}
+        <View style={styles.topHud}>
           <TouchableOpacity
             style={styles.hudButton}
-            onPress={() => setHistoryVisible(true)}
+            onPress={() => setTorch(!torch)}
           >
-            <Text style={styles.hudButtonText}>📜 History</Text>
+            <Text style={styles.hudButtonText}>{torch ? '🔦 On' : '🔦 Off'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.hudButton}
-            onPress={() => setSettingsVisible(true)}
+          {offlineCount > 0 ? (
+            <TouchableOpacity
+              style={styles.offlinePill}
+              onPress={() => setOfflineVisible(true)}
+            >
+              <Text style={styles.offlinePillText}>📡 Offline: {offlineCount}</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <View style={styles.hudRightGroup}>
+            <TouchableOpacity
+              style={styles.hudButton}
+              onPress={() => setHistoryVisible(true)}
+            >
+              <Text style={styles.hudButtonText}>📜 History</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.hudButton}
+              onPress={() => setSettingsVisible(true)}
+            >
+              <Text style={styles.hudButtonText}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Live Camera Viewfinder */}
+        <View style={styles.cameraContainer}>
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            enableTorch={torch}
+            barcodeScannerSettings={{
+              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code39', 'code128', 'qr']
+            }}
+            onBarcodeScanned={scanningActive ? handleBarcodeScanned : undefined}
+            onMountError={(err) => {
+              console.warn('Camera mount error:', err);
+              Alert.alert('Camera Error', err?.message || 'Could not access camera preview.');
+            }}
           >
-            <Text style={styles.hudButtonText}>⚙️</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+            {/* Laser Scanner Reticle Overlay */}
+            <View style={styles.reticleOverlay} pointerEvents="none">
+              <View style={styles.reticleBox}>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+                <View style={styles.laserLine} />
+              </View>
+              <Text style={styles.reticleHint}>Align barcode / ISBN within the frame</Text>
+            </View>
 
-      {/* Live Camera Viewfinder */}
-      <View style={styles.cameraContainer}>
-        <CameraView
-          style={StyleSheet.absoluteFillObject}
-          facing="back"
-          enableTorch={torch}
-          barcodeScannerSettings={{
-            barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code39', 'code128', 'qr']
-          }}
-          onBarcodeScanned={handleBarcodeScanned}
-        />
-
-        {/* Laser Scanner Reticle Overlay */}
-        <View style={styles.reticleOverlay}>
-          <View style={styles.reticleBox}>
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-            <View style={styles.laserLine} />
-          </View>
-          <Text style={styles.reticleHint}>Align barcode / ISBN within the frame</Text>
+            {loading ? (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color="#48BB78" />
+                <Text style={styles.loadingText}>Looking up item...</Text>
+              </View>
+            ) : null}
+          </CameraView>
         </View>
 
-        {loading ? (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#48BB78" />
-            <Text style={styles.loadingText}>Looking up item...</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {/* Bottom Controls Bar */}
-      <View style={styles.bottomBar}>
+        {/* Bottom Controls Bar */}
+        <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.manualEntryBtn}
           onPress={() => setManualInputVisible(!manualInputVisible)}
@@ -289,7 +304,8 @@ export default function App() {
         }}
         onSyncComplete={refreshOfflineCount}
       />
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -297,6 +313,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000'
+  },
+  safeArea: {
+    flex: 1
   },
   centerContainer: {
     flex: 1,
@@ -366,7 +385,12 @@ const styles = StyleSheet.create({
   },
   cameraContainer: {
     flex: 1,
-    position: 'relative'
+    overflow: 'hidden'
+  },
+  camera: {
+    flex: 1,
+    width: '100%',
+    height: '100%'
   },
   reticleOverlay: {
     ...StyleSheet.absoluteFillObject,
