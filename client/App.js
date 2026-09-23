@@ -92,7 +92,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const result = await scanBarcode(data, settings.serverUrl);
+      const result = await scanBarcode(data);
       setLoading(false);
       setScannedItem(result.data);
       setResultModalVisible(true);
@@ -116,7 +116,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const result = await scanBarcode(manualBarcode.trim(), settings.serverUrl);
+      const result = await scanBarcode(manualBarcode.trim());
       setLoading(false);
       setManualBarcode('');
       setScannedItem(result.data);
@@ -283,7 +283,6 @@ export default function App() {
       {/* Offline Queue Modal */}
       <OfflineQueueModal
         visible={offlineVisible}
-        serverUrl={settings.serverUrl}
         onClose={() => {
           setOfflineVisible(false);
           refreshOfflineCount();

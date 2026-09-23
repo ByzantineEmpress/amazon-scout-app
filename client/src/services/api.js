@@ -1,70 +1,48 @@
-import axios from 'axios';
-import { addToOfflineQueue, getOfflineQueue, clearOfflineQueue } from './storage';
+import { processBarcodeScanOnDevice } from './barcodeService';
+import { getOfflineQueue, clearOfflineQueue, addScanToHistory } from './storage';
 
 /**
- * Scan a single barcode through the backend proxy
+ * Scan a single barcode directly on-device
+ * 100% Serverless - zero hosting cost, no server to run!
  */
-export async function scanBarcode(barcode, serverUrl) {
-  const url = `${serverUrl.replace(/\/+$/, '')}/api/scan`;
-
+export async function scanBarcode(barcode) {
   try {
-    const response = await axios.post(
-      url,
-      { barcode },
-      { timeout: 4500 } // Short timeout for low-service environments
-    );
-    return { success: true, data: response.data, offline: false };
+    const data = await processBarcodeScanOnDevice(barcode);
+    return { success: true, data, offline: data.status === 'OFFLINE_QUEUED' };
   } catch (err) {
-    console.warn(`Scan request failed for ${barcode}:`, err.message);
-
-    // Save barcode to offline queue for later resolution
-    await addToOfflineQueue(barcode);
-
+    console.error('Scan error:', err);
     return {
       success: false,
-      offline: true,
       data: {
         barcode,
-        title: 'Saved to Offline Queue (No Cell Signal)',
-        status: 'OFFLINE_QUEUED',
-        badge: 'OFFLINE QUEUED',
-        badgeColor: '#718096',
-        reason: 'Network timeout in low service. Queued for auto-sync.',
-        canSell: null,
-        sellerCentralUrl: `https://sellercentral.amazon.com/productsearch?q=${barcode}`
+        title: 'Error reading barcode',
+        badge: 'ERROR',
+        badgeColor: '#E53E3E',
+        reason: err.message,
+        canSell: false
       }
     };
   }
 }
 
 /**
- * Sync all queued barcodes when cell service is restored
+ * Sync all queued barcodes on-device when cell service returns
  */
-export async function syncOfflineQueue(serverUrl) {
+export async function syncOfflineQueue() {
   const queue = await getOfflineQueue();
   if (queue.length === 0) return { count: 0, items: [] };
 
-  const url = `${serverUrl.replace(/\/+$/, '')}/api/batch-scan`;
-
-  try {
-    const response = await axios.post(url, { barcodes: queue }, { timeout: 10000 });
-    await clearOfflineQueue();
-    return { success: true, ...response.data };
-  } catch (err) {
-    console.error('Failed to sync offline queue:', err.message);
-    throw err;
+  const results = [];
+  for (const barcode of queue) {
+    try {
+      const item = await processBarcodeScanOnDevice(barcode);
+      results.push(item);
+      await addScanToHistory(item);
+    } catch (e) {
+      results.push({ barcode, error: e.message });
+    }
   }
-}
 
-/**
- * Check backend connection status
- */
-export async function testServerConnection(serverUrl) {
-  try {
-    const url = `${serverUrl.replace(/\/+$/, '')}/health`;
-    const response = await axios.get(url, { timeout: 3000 });
-    return { ok: true, data: response.data };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  await clearOfflineQueue();
+  return { count: results.length, items: results };
 }

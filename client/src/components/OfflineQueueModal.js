@@ -12,7 +12,7 @@ import {
 import { getOfflineQueue, clearOfflineQueue, addScanToHistory } from '../services/storage';
 import { syncOfflineQueue } from '../services/api';
 
-export default function OfflineQueueModal({ visible, serverUrl, onClose, onSyncComplete }) {
+export default function OfflineQueueModal({ visible, onClose, onSyncComplete }) {
   const [queue, setQueue] = useState([]);
   const [syncing, setSyncing] = useState(false);
 
@@ -31,21 +31,14 @@ export default function OfflineQueueModal({ visible, serverUrl, onClose, onSyncC
     if (queue.length === 0) return;
     setSyncing(true);
     try {
-      const res = await syncOfflineQueue(serverUrl);
-      if (res.items) {
-        for (const item of res.items) {
-          if (!item.error) {
-            await addScanToHistory(item);
-          }
-        }
-      }
+      const res = await syncOfflineQueue();
       setSyncing(false);
       Alert.alert('Sync Successful', `Successfully resolved ${res.items?.length || 0} queued scans.`);
       if (onSyncComplete) onSyncComplete();
       onClose();
     } catch (err) {
       setSyncing(false);
-      Alert.alert('Sync Failed', 'Could not reach server. Verify your internet/Wi-Fi connection.');
+      Alert.alert('Sync Failed', 'Could not resolve items. Verify your internet/cell connection.');
     }
   };
 
