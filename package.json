@@ -4,7 +4,8 @@
   "description": "100% Serverless High-Speed Amazon Scouting & Barcode Restriction Checker for Books, DVDs, and Video Games",
   "scripts": {
     "start": "npm --prefix client start",
-    "client": "npm --prefix client start",
+    "tunnel": "npm --prefix client run start:tunnel",
+    "lan": "npm --prefix client run start:lan",
     "test": "node server/test-scan.js"
   },
   "keywords": [
