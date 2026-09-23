@@ -1,0 +1,22 @@
+{
+  "name": "amazon-scout-workspace",
+  "version": "1.0.0",
+  "description": "High-Speed Amazon Scouting & Barcode Restriction Checker for Books, DVDs, and Video Games",
+  "scripts": {
+    "server": "npm --prefix server start",
+    "server:dev": "npm --prefix server run dev",
+    "client": "npm --prefix client start",
+    "test:server": "npm --prefix server run dev -- test-scan.js",
+    "test": "node server/test-scan.js"
+  },
+  "keywords": [
+    "amazon-fba",
+    "barcode-scanner",
+    "isbn",
+    "reselling",
+    "scouting",
+    "restrictions"
+  ],
+  "author": "",
+  "license": "ISC"
+}
