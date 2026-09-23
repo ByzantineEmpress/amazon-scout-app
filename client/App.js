@@ -4,13 +4,13 @@ import {
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   TextInput,
   ActivityIndicator,
   Alert,
   Platform
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 
@@ -170,9 +170,10 @@ export default function App() {
   }
 
   return (
-    <View style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor="#000000" />
+    <SafeAreaProvider>
+      <View style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+          <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
         {/* Top HUD Bar */}
         <View style={styles.topHud}>
@@ -319,8 +320,9 @@ export default function App() {
         }}
         onSyncComplete={refreshOfflineCount}
       />
-      </SafeAreaView>
-    </View>
+        </SafeAreaView>
+      </View>
+    </SafeAreaProvider>
   );
 }
 
@@ -368,7 +370,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 10 : 12,
+    paddingTop: 10,
     paddingBottom: 12,
     backgroundColor: 'rgba(0,0,0,0.6)',
     zIndex: 10
