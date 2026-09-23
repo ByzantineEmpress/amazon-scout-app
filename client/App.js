@@ -20,6 +20,7 @@ import ScanResultModal from './src/components/ScanResultModal';
 import SettingsModal from './src/components/SettingsModal';
 import HistoryModal from './src/components/HistoryModal';
 import OfflineQueueModal from './src/components/OfflineQueueModal';
+import { checkForUpdate } from './src/services/updateService';
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -46,6 +47,7 @@ export default function App() {
     scanCooldownMs: 1500
   });
   const [offlineCount, setOfflineCount] = useState(0);
+  const [hasUpdate, setHasUpdate] = useState(false);
 
   const lastScannedTime = useRef(0);
   const lastBarcode = useRef('');
@@ -58,6 +60,13 @@ export default function App() {
     const s = await getSettings();
     setSettings(s);
     refreshOfflineCount();
+
+    // Silent check for update on app startup
+    checkForUpdate().then((res) => {
+      if (res?.success && res?.updateAvailable) {
+        setHasUpdate(true);
+      }
+    }).catch(() => {});
   };
 
   const refreshOfflineCount = async () => {
@@ -220,6 +229,7 @@ export default function App() {
               onPress={() => setSettingsVisible(true)}
             >
               <Text style={styles.hudButtonText}>⚙️</Text>
+              {hasUpdate ? <View style={styles.updateDot} /> : null}
             </TouchableOpacity>
           </View>
         </View>
@@ -383,7 +393,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#2D3748',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8
+    borderRadius: 8,
+    position: 'relative'
+  },
+  updateDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#38A169',
+    borderWidth: 1.5,
+    borderColor: '#1A202C'
   },
   hudButtonText: {
     color: '#FFFFFF',

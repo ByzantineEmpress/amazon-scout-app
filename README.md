@@ -92,20 +92,28 @@ You can run Amazon Scout either in development mode via **Expo Go** or build sta
 
 ---
 
-### 🤖 Android: 1-Click Standalone APK (.apk)
+### 🤖 Android: Standalone APK (.apk) via GitHub Releases
 Android allows direct installation (sideloading) of standalone `.apk` files without paying for a Google Play Developer account ($0.00).
 
-1. **Run the APK build command**:
-   ```bash
-   npm run build:android
-   ```
-2. **Log into Expo** (or create a free account at [expo.dev/signup](https://expo.dev/signup) if you don't have one).
-3. EAS will automatically build your standalone `.apk` in the Expo cloud for free.
-4. Once completed (approx. 5–10 minutes), the terminal will provide a **direct download link** and **QR code**.
-5. Scan the QR code or open the link on your Android phone:
-   - Tap **Download**.
-   - Tap the downloaded file to **Install** (if prompted, enable *"Allow from this source"* in Android Settings).
-6. **Done!** The standalone **Amazon Scout** icon will now appear permanently on your Android home screen and app drawer.
+#### Method 1: Download Direct from GitHub Releases (Zero Setup)
+1. Go to your repository's Releases page:  
+   **[github.com/ByzantineEmpress/amazon-scout-app/releases/latest](https://github.com/ByzantineEmpress/amazon-scout-app/releases/latest)**
+2. Download the attached **`AmazonScout-vX.X.X.apk`** file directly on your Android phone.
+3. Tap the file to install (enable *"Allow from this source"* if prompted).
+4. **Done!** Amazon Scout is now installed on your home screen.
+
+#### In-App Updates:
+Once installed, you never need to manually check GitHub again:
+- Open Amazon Scout, tap **⚙️ Settings → Check for Updates**.
+- The app checks GitHub Releases for new versions, shows what changed, and lets you install the update with 1 tap!
+
+#### Method 2: Triggering a New APK Build
+Whenever you want to release an update:
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+GitHub Actions will automatically build the APK in the cloud, sign it, and publish the new release!
 
 ---
 
