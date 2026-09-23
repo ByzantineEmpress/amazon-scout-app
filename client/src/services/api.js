@@ -5,9 +5,9 @@ import { getOfflineQueue, clearOfflineQueue, addScanToHistory } from './storage'
  * Scan a single barcode directly on-device
  * 100% Serverless - zero hosting cost, no server to run!
  */
-export async function scanBarcode(barcode) {
+export async function scanBarcode(barcode, marketplace = 'CA') {
   try {
-    const data = await processBarcodeScanOnDevice(barcode);
+    const data = await processBarcodeScanOnDevice(barcode, marketplace);
     return { success: true, data, offline: data.status === 'OFFLINE_QUEUED' };
   } catch (err) {
     console.error('Scan error:', err);
@@ -28,14 +28,14 @@ export async function scanBarcode(barcode) {
 /**
  * Sync all queued barcodes on-device when cell service returns
  */
-export async function syncOfflineQueue() {
+export async function syncOfflineQueue(marketplace = 'CA') {
   const queue = await getOfflineQueue();
   if (queue.length === 0) return { count: 0, items: [] };
 
   const results = [];
   for (const barcode of queue) {
     try {
-      const item = await processBarcodeScanOnDevice(barcode);
+      const item = await processBarcodeScanOnDevice(barcode, marketplace);
       results.push(item);
       await addScanToHistory(item);
     } catch (e) {

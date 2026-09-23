@@ -90,6 +90,27 @@ export const GATED_BOOK_PUBLISHERS = [
     autoApprovable: false
   },
   {
+    name: 'Nelson Education (Canada)',
+    keywords: ['nelson education', 'nelson thomson', 'nelson college', 'thomson nelson', 'nelson series'],
+    severity: 'HARD_GATED',
+    reason: 'Nelson Education Canada requires wholesale distributor authorization to resell.',
+    autoApprovable: false
+  },
+  {
+    name: 'McGraw-Hill Ryerson (Canada)',
+    keywords: ['mcgraw-hill ryerson', 'mcgraw hill ryerson', 'ryerson press'],
+    severity: 'HARD_GATED',
+    reason: 'McGraw-Hill Ryerson requires wholesale distributor invoices with counterfeit safeguards.',
+    autoApprovable: false
+  },
+  {
+    name: 'Emond Publishing (Canada)',
+    keywords: ['emond montgomery', 'emond publishing', 'emond legal'],
+    severity: 'HARD_GATED',
+    reason: 'Emond Canadian legal/college texts are gated for third-party sellers.',
+    autoApprovable: false
+  },
+  {
     name: 'F.A. Davis',
     keywords: ['f.a. davis', 'fa davis'],
     severity: 'HARD_GATED',
@@ -147,6 +168,20 @@ export const GATED_MEDIA_STUDIOS = [
     keywords: ['hbo', 'home box office', 'game of thrones'],
     severity: 'HARD_GATED',
     reason: 'HBO box sets are heavily counterfeited and strictly gated.',
+    autoApprovable: false
+  },
+  {
+    name: 'Entertainment One / eOne (Canada)',
+    keywords: ['entertainment one', 'eone', 'e-one'],
+    severity: 'HARD_GATED',
+    reason: 'eOne Canadian film and television releases are restricted.',
+    autoApprovable: false
+  },
+  {
+    name: 'Alliance Films (Canada)',
+    keywords: ['alliance films', 'alliance atlantis', 'alliance vivafilm'],
+    severity: 'HARD_GATED',
+    reason: 'Alliance Films Canadian media releases are restricted.',
     autoApprovable: false
   },
   {

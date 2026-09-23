@@ -45,16 +45,19 @@ export function normalizeBarcode(raw) {
 }
 
 /**
- * Attempt to scrape live Amazon pricing directly from mobile phone
+ * Attempt to scrape live Amazon Canada (.ca) or US (.com) pricing directly from mobile phone
  */
-async function fetchAmazonPricing(asin) {
+async function fetchAmazonPricing(asin, marketplace = 'CA') {
   if (!asin) return null;
+  const isCanada = marketplace !== 'US';
+  const domain = isCanada ? 'https://www.amazon.ca' : 'https://www.amazon.com';
+
   try {
-    const res = await axios.get(`https://www.amazon.com/dp/${asin}`, {
+    const res = await axios.get(`${domain}/dp/${asin}`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9'
+        'Accept-Language': isCanada ? 'en-CA,en-US;q=0.9,en;q=0.8' : 'en-US,en;q=0.9'
       },
       timeout: 3800
     });
@@ -65,8 +68,8 @@ async function fetchAmazonPricing(asin) {
     let usedMin = null;
     let buyBox = null;
 
-    // Pattern 1: aria-label="Other Used and New from $X.XX" or "Used from $X.XX"
-    const usedRegex = /(?:Used|used)\s+(?:and\s+New\s+)?from\s*\$([0-9]+\.[0-9]{2})/i;
+    // Pattern 1: aria-label with CDN$ or $
+    const usedRegex = /(?:Used|used)\s+(?:and\s+New\s+)?from\s*(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i;
     const usedMatch = html.match(usedRegex);
     if (usedMatch && usedMatch[1]) {
       usedMin = parseFloat(usedMatch[1]);
@@ -81,7 +84,7 @@ async function fetchAmazonPricing(asin) {
 
     // Pattern 3: Accordion rows
     if (!usedMin) {
-      const accordion = html.match(/id="usedAccordionRow"[\s\S]*?\$([0-9]+\.[0-9]{2})/i);
+      const accordion = html.match(/id="usedAccordionRow"[\s\S]*?(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i);
       if (accordion && accordion[1]) {
         usedMin = parseFloat(accordion[1]);
       }
@@ -182,15 +185,16 @@ async function fetchMetadataOnDevice(barcode) {
  * Main On-Device Scan Resolution
  * Completely serverless - executes 100% on phone
  */
-export async function processBarcodeScanOnDevice(rawBarcode) {
+export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA') {
   const barcode = normalizeBarcode(rawBarcode);
   if (!barcode) {
     throw new Error('Invalid barcode provided');
   }
 
+  const cacheKey = `${marketplace}:${barcode}`;
   // 1. Check local cache (0ms instant return)
-  if (localCache.has(barcode)) {
-    return { ...localCache.get(barcode), cached: true };
+  if (localCache.has(cacheKey)) {
+    return { ...localCache.get(cacheKey), cached: true };
   }
 
   try {
@@ -200,7 +204,7 @@ export async function processBarcodeScanOnDevice(rawBarcode) {
 
     const [meta, pricing] = await Promise.all([
       fetchMetadataOnDevice(barcode),
-      fetchAmazonPricing(computedAsin)
+      fetchAmazonPricing(computedAsin, marketplace)
     ]);
 
     // 3. Evaluate restrictions on-device
@@ -211,13 +215,20 @@ export async function processBarcodeScanOnDevice(rawBarcode) {
       category: meta.category
     });
 
+    const isCanada = marketplace !== 'US';
+    const domain = isCanada ? 'https://www.amazon.ca' : 'https://www.amazon.com';
+    const sellerCentralDomain = isCanada ? 'https://sellercentral.amazon.ca' : 'https://sellercentral.amazon.com';
+
     const asinOrQuery = meta.asin || computedAsin || barcode;
-    const sellerCentralUrl = `https://sellercentral.amazon.com/productsearch?q=${asinOrQuery}`;
-    const amazonProductUrl = `https://www.amazon.com/dp/${asinOrQuery}`;
+    const sellerCentralUrl = `${sellerCentralDomain}/productsearch?q=${asinOrQuery}`;
+    const amazonProductUrl = `${domain}/dp/${asinOrQuery}`;
 
     const response = {
       barcode,
       asin: asinOrQuery,
+      marketplace,
+      currency: isCanada ? 'CAD' : 'USD',
+      currencyPrefix: isCanada ? 'CDN$ ' : '$',
       title: meta.title,
       publisher: meta.publisher,
       author: meta.author,
@@ -238,7 +249,7 @@ export async function processBarcodeScanOnDevice(rawBarcode) {
       timestamp: Date.now()
     };
 
-    localCache.set(barcode, response);
+    localCache.set(cacheKey, response);
     return response;
   } catch (err) {
     console.warn(`On-device scan error for ${barcode}:`, err.message);
@@ -246,9 +257,16 @@ export async function processBarcodeScanOnDevice(rawBarcode) {
     // Save to offline queue if network timed out
     await addToOfflineQueue(barcode);
 
+    const isCanada = marketplace !== 'US';
+    const domain = isCanada ? 'https://www.amazon.ca' : 'https://www.amazon.com';
+    const sellerCentralDomain = isCanada ? 'https://sellercentral.amazon.ca' : 'https://sellercentral.amazon.com';
+
     return {
       barcode,
       asin: barcode,
+      marketplace,
+      currency: isCanada ? 'CAD' : 'USD',
+      currencyPrefix: isCanada ? 'CDN$ ' : '$',
       title: 'Item Queued Offline (No Cell Signal)',
       status: 'OFFLINE_QUEUED',
       badge: 'OFFLINE QUEUED',
@@ -256,8 +274,8 @@ export async function processBarcodeScanOnDevice(rawBarcode) {
       reason: 'Network timed out in store. Barcode saved to Offline Queue.',
       canSell: null,
       requiresInvoices: false,
-      sellerCentralUrl: `https://sellercentral.amazon.com/productsearch?q=${barcode}`,
-      amazonProductUrl: `https://www.amazon.com/dp/${barcode}`,
+      sellerCentralUrl: `${sellerCentralDomain}/productsearch?q=${barcode}`,
+      amazonProductUrl: `${domain}/dp/${barcode}`,
       timestamp: Date.now()
     };
   }

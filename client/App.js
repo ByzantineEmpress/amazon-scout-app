@@ -40,7 +40,7 @@ export default function App() {
 
   // Settings & state
   const [settings, setSettings] = useState({
-    serverUrl: 'http://localhost:3000',
+    marketplace: 'CA',
     soundEnabled: true,
     vibrationEnabled: true,
     scanCooldownMs: 1500
@@ -93,7 +93,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const result = await scanBarcode(data);
+      const result = await scanBarcode(data, settings.marketplace || 'CA');
       setLoading(false);
       setScannedItem(result.data);
       setResultModalVisible(true);
@@ -117,7 +117,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const result = await scanBarcode(manualBarcode.trim());
+      const result = await scanBarcode(manualBarcode.trim(), settings.marketplace || 'CA');
       setLoading(false);
       setManualBarcode('');
       setScannedItem(result.data);
@@ -181,6 +181,20 @@ export default function App() {
             onPress={() => setTorch(!torch)}
           >
             <Text style={styles.hudButtonText}>{torch ? '🔦 On' : '🔦 Off'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.marketPill}
+            onPress={() => {
+              const next = settings.marketplace === 'CA' ? 'US' : 'CA';
+              const updated = { ...settings, marketplace: next };
+              setSettings(updated);
+              saveSettings(updated);
+            }}
+          >
+            <Text style={styles.marketPillText}>
+              {settings.marketplace === 'US' ? '🇺🇸 US' : '🇨🇦 CA'}
+            </Text>
           </TouchableOpacity>
 
           {offlineCount > 0 ? (
@@ -385,8 +399,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800'
   },
+  marketPill: {
+    backgroundColor: '#2D3748',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4A5568'
+  },
+  marketPillText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13
+  },
   cameraContainer: {
     flex: 1,
+    position: 'relative',
+    width: '100%',
+    height: '100%',
     overflow: 'hidden'
   },
   camera: {
@@ -395,20 +425,26 @@ const styles = StyleSheet.create({
     height: '100%'
   },
   reticleOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    zIndex: 5
   },
   reticleBox: {
-    width: 280,
-    height: 180,
+    width: 300,
+    height: 140,
     position: 'relative',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   corner: {
     position: 'absolute',
-    width: 24,
-    height: 24,
+    width: 30,
+    height: 30,
     borderColor: '#48BB78',
     borderWidth: 4
   },
@@ -416,29 +452,34 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     borderRightWidth: 0,
-    borderBottomWidth: 0
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 10
   },
   topRight: {
     top: 0,
     right: 0,
     borderLeftWidth: 0,
-    borderBottomWidth: 0
+    borderBottomWidth: 0,
+    borderTopRightRadius: 10
   },
   bottomLeft: {
     bottom: 0,
     left: 0,
     borderRightWidth: 0,
-    borderTopWidth: 0
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 10
   },
   bottomRight: {
     bottom: 0,
     right: 0,
     borderLeftWidth: 0,
-    borderTopWidth: 0
+    borderTopWidth: 0,
+    borderBottomRightRadius: 10
   },
   laserLine: {
+    width: '90%',
     height: 2,
-    backgroundColor: 'rgba(239, 68, 68, 0.8)',
+    backgroundColor: '#EF4444',
     shadowColor: '#EF4444',
     shadowOpacity: 0.9,
     shadowRadius: 6,
@@ -446,11 +487,15 @@ const styles = StyleSheet.create({
   },
   reticleHint: {
     color: '#FFFFFF',
-    marginTop: 20,
+    marginTop: 18,
     fontSize: 13,
-    fontWeight: '600',
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowRadius: 4
+    fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.9)',
+    textShadowRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,

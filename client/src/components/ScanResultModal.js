@@ -86,21 +86,23 @@ export default function ScanResultModal({ visible, item, onClose }) {
 
             {/* Pricing Section */}
             <View style={styles.priceContainer}>
-              <Text style={styles.sectionHeader}>Amazon Used Pricing</Text>
+              <Text style={styles.sectionHeader}>
+                Used Pricing ({item.marketplace === 'US' ? 'Amazon.com 🇺🇸' : 'Amazon.ca 🇨🇦'})
+              </Text>
               
               {item.usedMin || item.usedBuyBox ? (
                 <View style={styles.priceGrid}>
                   <View style={styles.priceBox}>
                     <Text style={styles.priceBoxLabel}>Lowest Used</Text>
                     <Text style={styles.priceBoxValue}>
-                      {item.usedMin ? `$${Number(item.usedMin).toFixed(2)}` : 'N/A'}
+                      {item.usedMin ? `${item.currencyPrefix || 'CDN$ '}${Number(item.usedMin).toFixed(2)}` : 'N/A'}
                     </Text>
                   </View>
 
                   <View style={styles.priceBox}>
                     <Text style={styles.priceBoxLabel}>Buy Box</Text>
                     <Text style={styles.priceBoxValue}>
-                      {item.usedBuyBox ? `$${Number(item.usedBuyBox).toFixed(2)}` : 'N/A'}
+                      {item.usedBuyBox ? `${item.currencyPrefix || 'CDN$ '}${Number(item.usedBuyBox).toFixed(2)}` : 'N/A'}
                     </Text>
                   </View>
                 </View>
@@ -109,8 +111,10 @@ export default function ScanResultModal({ visible, item, onClose }) {
                   style={styles.livePriceQuickBtn}
                   onPress={handleOpenAmazonProduct}
                 >
-                  <Text style={styles.livePriceQuickBtnText}>⚡ Check Live Used Offers (In-App Preview)</Text>
-                  <Text style={styles.livePriceSubtext}>Tap to slide up Amazon live used prices</Text>
+                  <Text style={styles.livePriceQuickBtnText}>
+                    ⚡ Check Live Used Offers ({item.marketplace === 'US' ? 'Amazon.com' : 'Amazon.ca'})
+                  </Text>
+                  <Text style={styles.livePriceSubtext}>Tap to slide up live Canadian used offers</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -127,14 +131,18 @@ export default function ScanResultModal({ visible, item, onClose }) {
                 style={styles.sellerCentralButton}
                 onPress={handleOpenSellerCentral}
               >
-                <Text style={styles.sellerCentralButtonText}>⚡ 1-Tap Seller Central (Check Approval)</Text>
+                <Text style={styles.sellerCentralButtonText}>
+                  ⚡ 1-Tap Seller Central ({item.marketplace === 'US' ? '.com' : '.ca'})
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.amazonButton}
                 onPress={handleOpenAmazonProduct}
               >
-                <Text style={styles.amazonButtonText}>🌐 View Live Product on Amazon.com</Text>
+                <Text style={styles.amazonButtonText}>
+                  🌐 View Live on {item.marketplace === 'US' ? 'Amazon.com' : 'Amazon.ca'}
+                </Text>
               </TouchableOpacity>
             </View>
           </ScrollView>

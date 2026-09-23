@@ -7,7 +7,7 @@ const KEYS = {
 };
 
 const DEFAULT_SETTINGS = {
-  serverUrl: 'http://localhost:3000', // Change to computer's local IP or deployed URL
+  marketplace: 'CA', // Default to Amazon Canada (Amazon.ca)
   soundEnabled: true,
   vibrationEnabled: true,
   scanCooldownMs: 1500

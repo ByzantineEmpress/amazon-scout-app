@@ -12,6 +12,7 @@ import {
 import { getSettings, saveSettings, clearScanHistory, clearOfflineQueue } from '../services/storage';
 
 export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
+  const [marketplace, setMarketplace] = useState('CA');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
 
@@ -23,12 +24,14 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
 
   const loadCurrentSettings = async () => {
     const s = await getSettings();
+    setMarketplace(s.marketplace || 'CA');
     setSoundEnabled(s.soundEnabled !== false);
     setVibrationEnabled(s.vibrationEnabled !== false);
   };
 
   const handleSave = async () => {
     const updated = {
+      marketplace,
       soundEnabled,
       vibrationEnabled
     };
@@ -64,11 +67,35 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
           <Text style={styles.title}>⚙️ App Settings</Text>
 
           <ScrollView style={styles.scroll}>
+            {/* Marketplace Selection */}
+            <View style={styles.marketplaceSection}>
+              <Text style={styles.sectionLabel}>Target Amazon Marketplace</Text>
+              <View style={styles.marketplaceRow}>
+                <TouchableOpacity
+                  style={[styles.marketBtn, marketplace === 'CA' && styles.marketBtnActive]}
+                  onPress={() => setMarketplace('CA')}
+                >
+                  <Text style={[styles.marketBtnText, marketplace === 'CA' && styles.marketBtnTextActive]}>
+                    🇨🇦 Amazon.ca (CAD)
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.marketBtn, marketplace === 'US' && styles.marketBtnActive]}
+                  onPress={() => setMarketplace('US')}
+                >
+                  <Text style={[styles.marketBtnText, marketplace === 'US' && styles.marketBtnTextActive]}>
+                    🇺🇸 Amazon.com (USD)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {/* Serverless Badge */}
             <View style={styles.modeCard}>
-              <Text style={styles.modeCardTitle}>⚡ 100% Serverless Mode</Text>
+              <Text style={styles.modeCardTitle}>⚡ 100% Serverless & Canadian Optimized</Text>
               <Text style={styles.modeCardText}>
-                No server required! All barcode recognition, publisher restrictions (Pearson, McGraw-Hill, Wiley, etc.), and media studio checks run directly on your phone with zero monthly fees ($0.00).
+                Tailored for Canadian resellers! Includes gating rules for Nelson Education Canada, McGraw-Hill Ryerson, eOne Canada, Pearson, and Disney.
               </Text>
             </View>
 
@@ -89,14 +116,6 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
                 onValueChange={setSoundEnabled}
                 trackColor={{ false: '#4A5568', true: '#48BB78' }}
               />
-            </View>
-
-            {/* Gating Rules Summary */}
-            <View style={styles.infoSection}>
-              <Text style={styles.infoSectionTitle}>Active Restriction Checks</Text>
-              <Text style={styles.infoSectionBullet}>• Textbooks: Pearson, McGraw-Hill, Cengage, Wiley, Elsevier, Oxford, Cambridge, Norton</Text>
-              <Text style={styles.infoSectionBullet}>• DVDs: Disney, Warner Bros, Sony, HBO, Paramount + $25 MSRP cap</Text>
-              <Text style={styles.infoSectionBullet}>• Games: Nintendo, PlayStation, Xbox first-party</Text>
             </View>
 
             {/* Data Management */}
@@ -148,6 +167,42 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center'
   },
+  marketplaceSection: {
+    marginBottom: 16
+  },
+  sectionLabel: {
+    color: '#CBD5E0',
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 8
+  },
+  marketplaceRow: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  marketBtn: {
+    flex: 1,
+    backgroundColor: '#2D3748',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent'
+  },
+  marketBtnActive: {
+    borderColor: '#38A169',
+    backgroundColor: 'rgba(56, 161, 105, 0.2)'
+  },
+  marketBtnText: {
+    color: '#A0AEC0',
+    fontWeight: '700',
+    fontSize: 13
+  },
+  marketBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800'
+  },
   modeCard: {
     backgroundColor: 'rgba(56, 161, 105, 0.15)',
     borderColor: '#38A169',
@@ -179,28 +234,8 @@ const styles = StyleSheet.create({
     color: '#E2E8F0',
     fontSize: 15
   },
-  infoSection: {
-    backgroundColor: '#2D3748',
-    borderRadius: 10,
-    padding: 14,
-    marginTop: 16,
-    marginBottom: 12
-  },
-  infoSectionTitle: {
-    color: '#CBD5E0',
-    fontWeight: '700',
-    fontSize: 13,
-    marginBottom: 8,
-    textTransform: 'uppercase'
-  },
-  infoSectionBullet: {
-    color: '#A0AEC0',
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 4
-  },
   dangerButton: {
-    marginTop: 8,
+    marginTop: 12,
     paddingVertical: 10,
     alignItems: 'center'
   },
@@ -212,7 +247,7 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 16
+    marginTop: 20
   },
   cancelButton: {
     flex: 1,
