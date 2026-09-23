@@ -8,7 +8,8 @@ import {
   StatusBar,
   TextInput,
   ActivityIndicator,
-  Alert
+  Alert,
+  Platform
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -222,26 +223,26 @@ export default function App() {
               console.warn('Camera mount error:', err);
               Alert.alert('Camera Error', err?.message || 'Could not access camera preview.');
             }}
-          >
-            {/* Laser Scanner Reticle Overlay */}
-            <View style={styles.reticleOverlay} pointerEvents="none">
-              <View style={styles.reticleBox}>
-                <View style={[styles.corner, styles.topLeft]} />
-                <View style={[styles.corner, styles.topRight]} />
-                <View style={[styles.corner, styles.bottomLeft]} />
-                <View style={[styles.corner, styles.bottomRight]} />
-                <View style={styles.laserLine} />
-              </View>
-              <Text style={styles.reticleHint}>Align barcode / ISBN within the frame</Text>
-            </View>
+          />
 
-            {loading ? (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#48BB78" />
-                <Text style={styles.loadingText}>Looking up item...</Text>
-              </View>
-            ) : null}
-          </CameraView>
+          {/* Laser Scanner Reticle Overlay */}
+          <View style={styles.reticleOverlay} pointerEvents="none">
+            <View style={styles.reticleBox}>
+              <View style={[styles.corner, styles.topLeft]} />
+              <View style={[styles.corner, styles.topRight]} />
+              <View style={[styles.corner, styles.bottomLeft]} />
+              <View style={[styles.corner, styles.bottomRight]} />
+              <View style={styles.laserLine} />
+            </View>
+            <Text style={styles.reticleHint}>Align barcode / ISBN within the frame</Text>
+          </View>
+
+          {loading ? (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color="#48BB78" />
+              <Text style={styles.loadingText}>Looking up item & prices...</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Bottom Controls Bar */}
@@ -353,7 +354,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 10 : 12,
+    paddingBottom: 12,
     backgroundColor: 'rgba(0,0,0,0.6)',
     zIndex: 10
   },
@@ -464,7 +466,9 @@ const styles = StyleSheet.create({
   },
   bottomBar: {
     backgroundColor: '#1A202C',
-    padding: 16
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === 'android' ? 28 : 16
   },
   manualEntryBtn: {
     backgroundColor: '#2D3748',

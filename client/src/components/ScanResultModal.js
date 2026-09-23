@@ -6,8 +6,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Linking
+  Platform
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 
 export default function ScanResultModal({ visible, item, onClose }) {
   if (!item) return null;
@@ -15,15 +16,19 @@ export default function ScanResultModal({ visible, item, onClose }) {
   const isRestricted = item.status === 'HARD_GATED' || item.status === 'RESTRICTED';
   const isSafe = item.status === 'UNGATED';
 
-  const handleOpenSellerCentral = () => {
+  const handleOpenSellerCentral = async () => {
     if (item.sellerCentralUrl) {
-      Linking.openURL(item.sellerCentralUrl);
+      await WebBrowser.openBrowserAsync(item.sellerCentralUrl, {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET
+      });
     }
   };
 
-  const handleOpenAmazonProduct = () => {
+  const handleOpenAmazonProduct = async () => {
     if (item.amazonProductUrl) {
-      Linking.openURL(item.amazonProductUrl);
+      await WebBrowser.openBrowserAsync(item.amazonProductUrl, {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET
+      });
     }
   };
 
@@ -82,28 +87,32 @@ export default function ScanResultModal({ visible, item, onClose }) {
             {/* Pricing Section */}
             <View style={styles.priceContainer}>
               <Text style={styles.sectionHeader}>Amazon Used Pricing</Text>
-              <View style={styles.priceGrid}>
-                <View style={styles.priceBox}>
-                  <Text style={styles.priceBoxLabel}>Lowest Used</Text>
-                  <Text style={styles.priceBoxValue}>
-                    {item.usedMin ? `$${Number(item.usedMin).toFixed(2)}` : 'Check Link'}
-                  </Text>
-                </View>
+              
+              {item.usedMin || item.usedBuyBox ? (
+                <View style={styles.priceGrid}>
+                  <View style={styles.priceBox}>
+                    <Text style={styles.priceBoxLabel}>Lowest Used</Text>
+                    <Text style={styles.priceBoxValue}>
+                      {item.usedMin ? `$${Number(item.usedMin).toFixed(2)}` : 'N/A'}
+                    </Text>
+                  </View>
 
-                <View style={styles.priceBox}>
-                  <Text style={styles.priceBoxLabel}>Buy Box</Text>
-                  <Text style={styles.priceBoxValue}>
-                    {item.usedBuyBox ? `$${Number(item.usedBuyBox).toFixed(2)}` : 'Check Link'}
-                  </Text>
+                  <View style={styles.priceBox}>
+                    <Text style={styles.priceBoxLabel}>Buy Box</Text>
+                    <Text style={styles.priceBoxValue}>
+                      {item.usedBuyBox ? `$${Number(item.usedBuyBox).toFixed(2)}` : 'N/A'}
+                    </Text>
+                  </View>
                 </View>
-
-                <View style={styles.priceBox}>
-                  <Text style={styles.priceBoxLabel}>Used Offers</Text>
-                  <Text style={styles.priceBoxValue}>
-                    {item.usedOffers !== null && item.usedOffers !== undefined ? item.usedOffers : '—'}
-                  </Text>
-                </View>
-              </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.livePriceQuickBtn}
+                  onPress={handleOpenAmazonProduct}
+                >
+                  <Text style={styles.livePriceQuickBtnText}>⚡ Check Live Used Offers (In-App Preview)</Text>
+                  <Text style={styles.livePriceSubtext}>Tap to slide up Amazon live used prices</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Barcode & ASIN */}
@@ -118,14 +127,14 @@ export default function ScanResultModal({ visible, item, onClose }) {
                 style={styles.sellerCentralButton}
                 onPress={handleOpenSellerCentral}
               >
-                <Text style={styles.sellerCentralButtonText}>⚡ 1-Tap Seller Central Check</Text>
+                <Text style={styles.sellerCentralButtonText}>⚡ 1-Tap Seller Central (Check Approval)</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.amazonButton}
                 onPress={handleOpenAmazonProduct}
               >
-                <Text style={styles.amazonButtonText}>🌐 View on Amazon.com</Text>
+                <Text style={styles.amazonButtonText}>🌐 View Live Product on Amazon.com</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
@@ -150,8 +159,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A202C',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
-    overflow: 'hidden'
+    maxHeight: '88%',
+    overflow: 'hidden',
+    paddingBottom: Platform.OS === 'android' ? 16 : 0
   },
   statusBanner: {
     paddingVertical: 14,
@@ -260,19 +270,37 @@ const styles = StyleSheet.create({
   priceBox: {
     flex: 1,
     backgroundColor: '#1A202C',
-    padding: 10,
+    padding: 12,
     borderRadius: 8,
     alignItems: 'center'
   },
   priceBoxLabel: {
     color: '#A0AEC0',
-    fontSize: 11,
+    fontSize: 12,
     marginBottom: 4
   },
   priceBoxValue: {
     color: '#48BB78',
-    fontSize: 16,
-    fontWeight: '800'
+    fontSize: 20,
+    fontWeight: '900'
+  },
+  livePriceQuickBtn: {
+    backgroundColor: 'rgba(72, 187, 120, 0.15)',
+    borderColor: '#48BB78',
+    borderWidth: 1.5,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center'
+  },
+  livePriceQuickBtnText: {
+    color: '#48BB78',
+    fontWeight: '800',
+    fontSize: 14
+  },
+  livePriceSubtext: {
+    color: '#A0AEC0',
+    fontSize: 11,
+    marginTop: 3
   },
   idRow: {
     flexDirection: 'row',

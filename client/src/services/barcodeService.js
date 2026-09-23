@@ -45,6 +45,61 @@ export function normalizeBarcode(raw) {
 }
 
 /**
+ * Attempt to scrape live Amazon pricing directly from mobile phone
+ */
+async function fetchAmazonPricing(asin) {
+  if (!asin) return null;
+  try {
+    const res = await axios.get(`https://www.amazon.com/dp/${asin}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9'
+      },
+      timeout: 3800
+    });
+
+    const html = res.data;
+    if (typeof html !== 'string') return null;
+
+    let usedMin = null;
+    let buyBox = null;
+
+    // Pattern 1: aria-label="Other Used and New from $X.XX" or "Used from $X.XX"
+    const usedRegex = /(?:Used|used)\s+(?:and\s+New\s+)?from\s*\$([0-9]+\.[0-9]{2})/i;
+    const usedMatch = html.match(usedRegex);
+    if (usedMatch && usedMatch[1]) {
+      usedMin = parseFloat(usedMatch[1]);
+    }
+
+    // Pattern 2: Core buybox price
+    const bbRegex = /class="a-price-whole">([0-9,]+)<span class="a-price-fraction">([0-9]{2})<\/span>/;
+    const bbMatch = html.match(bbRegex);
+    if (bbMatch && bbMatch[1] && bbMatch[2]) {
+      buyBox = parseFloat(bbMatch[1].replace(/,/g, '') + '.' + bbMatch[2]);
+    }
+
+    // Pattern 3: Accordion rows
+    if (!usedMin) {
+      const accordion = html.match(/id="usedAccordionRow"[\s\S]*?\$([0-9]+\.[0-9]{2})/i);
+      if (accordion && accordion[1]) {
+        usedMin = parseFloat(accordion[1]);
+      }
+    }
+
+    // Pattern 4: Fallback to all prices
+    if (!usedMin && buyBox) {
+      usedMin = buyBox;
+    }
+
+    return { usedMin, buyBox };
+  } catch (err) {
+    // Network or captcha fallback - returns null smoothly
+    return null;
+  }
+}
+
+/**
  * Fetch book/media metadata directly from phone
  */
 async function fetchMetadataOnDevice(barcode) {
@@ -64,7 +119,7 @@ async function fetchMetadataOnDevice(barcode) {
       // 1. Try OpenLibrary Edition endpoint (fast, free, no keys needed)
       const olRes = await axios.get(`https://openlibrary.org/isbn/${isbnQuery}.json`, {
         headers: { 'User-Agent': 'AmazonScoutApp/1.0 (reseller-assistant)' },
-        timeout: 4000
+        timeout: 3500
       });
       if (olRes.data) {
         title = olRes.data.title || title;
@@ -79,7 +134,7 @@ async function fetchMetadataOnDevice(barcode) {
       // 2. Fallback to Google Books
       try {
         const gbRes = await axios.get(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanBarcode}`, {
-          timeout: 3500
+          timeout: 3000
         });
         if (gbRes.data && gbRes.data.items && gbRes.data.items.length > 0) {
           const info = gbRes.data.items[0].volumeInfo;
@@ -99,7 +154,7 @@ async function fetchMetadataOnDevice(barcode) {
     // UPC / EAN media lookup
     try {
       const upcRes = await axios.get(`https://api.upcitemdb.com/prod/trial/lookup?upc=${cleanBarcode}`, {
-        timeout: 4000
+        timeout: 3500
       });
       if (upcRes.data && upcRes.data.items && upcRes.data.items.length > 0) {
         const item = upcRes.data.items[0];
@@ -139,8 +194,14 @@ export async function processBarcodeScanOnDevice(rawBarcode) {
   }
 
   try {
-    // 2. Fetch metadata directly from phone
-    const meta = await fetchMetadataOnDevice(barcode);
+    // 2. Fetch metadata & live pricing concurrently directly from phone
+    const isBook = barcode.startsWith('978') || barcode.startsWith('979') || barcode.length === 10;
+    const computedAsin = isBook ? (barcode.length === 13 ? isbn13to10(barcode) : barcode) : barcode;
+
+    const [meta, pricing] = await Promise.all([
+      fetchMetadataOnDevice(barcode),
+      fetchAmazonPricing(computedAsin)
+    ]);
 
     // 3. Evaluate restrictions on-device
     const restriction = evaluateRestrictions({
@@ -150,7 +211,7 @@ export async function processBarcodeScanOnDevice(rawBarcode) {
       category: meta.category
     });
 
-    const asinOrQuery = meta.asin || barcode;
+    const asinOrQuery = meta.asin || computedAsin || barcode;
     const sellerCentralUrl = `https://sellercentral.amazon.com/productsearch?q=${asinOrQuery}`;
     const amazonProductUrl = `https://www.amazon.com/dp/${asinOrQuery}`;
 
@@ -169,8 +230,8 @@ export async function processBarcodeScanOnDevice(rawBarcode) {
       canSell: restriction.canSell,
       requiresInvoices: restriction.requiresInvoices,
       matchedName: restriction.matchedName || null,
-      usedMin: null,
-      usedBuyBox: null,
+      usedMin: pricing?.usedMin || null,
+      usedBuyBox: pricing?.buyBox || null,
       usedOffers: null,
       sellerCentralUrl,
       amazonProductUrl,

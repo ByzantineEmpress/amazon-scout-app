@@ -28,7 +28,8 @@
         {
           "cameraPermission": "Amazon Scout requires camera access to scan barcodes and ISBNs quickly on store shelves."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
