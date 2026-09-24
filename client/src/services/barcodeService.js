@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { evaluateRestrictions } from './gatingRules';
-import { addToOfflineQueue } from './storage';
+import { evaluateRestrictions } from './gatingRules.js';
+import { addToOfflineQueue } from './storage.js';
 
 // In-memory cache for ultra-fast repeat lookups (0ms latency on phone)
 const localCache = new Map();
@@ -37,7 +37,7 @@ export function isbn13to10(isbn13) {
 }
 
 /**
- * Normalize barcode
+ * Normalize barcode string
  */
 export function normalizeBarcode(raw) {
   if (!raw) return '';
@@ -45,140 +45,183 @@ export function normalizeBarcode(raw) {
 }
 
 /**
- * Attempt to scrape live Amazon Canada (.ca) or US (.com) pricing directly from mobile phone
+ * 1. Live Amazon Search Extractor (Gets Real Title, ASIN, Buy Box, and Lowest Used Price)
+ * Runs directly on-device with zero server needed
  */
-async function fetchAmazonPricing(asin, marketplace = 'CA') {
-  if (!asin) return null;
-  const isCanada = marketplace !== 'US';
-  const domain = isCanada ? 'https://www.amazon.ca' : 'https://www.amazon.com';
+async function scrapeAmazonSearch(barcode, marketplace = 'CA') {
+  const primaryDomain = marketplace === 'US' ? 'https://www.amazon.com' : 'https://www.amazon.ca';
+  const fallbackDomain = marketplace === 'US' ? 'https://www.amazon.ca' : 'https://www.amazon.com';
 
-  try {
-    const res = await axios.get(`${domain}/dp/${asin}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': isCanada ? 'en-CA,en-US;q=0.9,en;q=0.8' : 'en-US,en;q=0.9'
-      },
-      timeout: 3800
-    });
+  const queryDomain = async (domain) => {
+    try {
+      const res = await axios.get(`${domain}/s?k=${barcode}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': domain.includes('.ca') ? 'en-CA,en-US;q=0.9,en;q=0.8' : 'en-US,en;q=0.9'
+        },
+        timeout: 4500
+      });
 
-    const html = res.data;
-    if (typeof html !== 'string') return null;
+      const html = res.data;
+      if (typeof html !== 'string') return null;
 
-    let usedMin = null;
-    let buyBox = null;
+      // Extract search result blocks
+      const blocks = html.split('data-component-type="s-search-result"').slice(1);
+      for (const b of blocks) {
+        // Extract title
+        const titleMatch = b.match(/<h2[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i) ||
+                           b.match(/class="a-size-[^"]*a-color-base[^"]*">([^<]+)<\/span>/i);
+        if (!titleMatch) continue;
 
-    // Pattern 1: aria-label with CDN$ or $
-    const usedRegex = /(?:Used|used)\s+(?:and\s+New\s+)?from\s*(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i;
-    const usedMatch = html.match(usedRegex);
-    if (usedMatch && usedMatch[1]) {
-      usedMin = parseFloat(usedMatch[1]);
-    }
+        const rawTitle = titleMatch[1]
+          .replace(/&amp;/g, '&')
+          .replace(/&#x27;/g, "'")
+          .replace(/&quot;/g, '"')
+          .trim();
 
-    // Pattern 2: Core buybox price
-    const bbRegex = /class="a-price-whole">([0-9,]+)<span class="a-price-fraction">([0-9]{2})<\/span>/;
-    const bbMatch = html.match(bbRegex);
-    if (bbMatch && bbMatch[1] && bbMatch[2]) {
-      buyBox = parseFloat(bbMatch[1].replace(/,/g, '') + '.' + bbMatch[2]);
-    }
+        if (rawTitle.toLowerCase().includes('no results for') || rawTitle.toLowerCase().includes('need help')) {
+          continue;
+        }
 
-    // Pattern 3: Accordion rows
-    if (!usedMin) {
-      const accordion = html.match(/id="usedAccordionRow"[\s\S]*?(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i);
-      if (accordion && accordion[1]) {
-        usedMin = parseFloat(accordion[1]);
+        // Extract ASIN
+        const asinMatch = b.match(/data-asin="([A-Z0-9]{10})"/i);
+        const asin = asinMatch ? asinMatch[1] : null;
+
+        // Extract Author
+        const authorMatch = b.match(/by\s+<[^>]+>([^<]+)<\/[^>]+>/i) ||
+                            b.match(/by\s+<span[^>]*>([^<]+)<\/span>/i);
+        const author = authorMatch ? authorMatch[1].trim() : null;
+
+        // Extract BuyBox
+        const bbMatch = b.match(/class="a-price-whole">([0-9,]+)<span class="a-price-fraction">([0-9]{2})<\/span>/);
+        const buyBox = bbMatch ? parseFloat(bbMatch[1].replace(/,/g, '') + '.' + bbMatch[2]) : null;
+
+        // Extract Used Price (e.g. "Used from CDN$ 12.61" or "More Buying Choices CDN$ 11.50")
+        const usedMatch = b.match(/(?:Used|used)\s+(?:and\s+New\s+)?from\s*(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i) ||
+                          b.match(/More\s+Buying\s+Choices[\s\S]*?(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i);
+        let usedMin = usedMatch ? parseFloat(usedMatch[1]) : null;
+
+        // Fallback: look at all prices in this specific block
+        const allPrices = [...b.matchAll(/class="a-offscreen">(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})<\/span>/gi)]
+          .map(m => parseFloat(m[1]));
+        if (!usedMin && allPrices.length > 0) {
+          usedMin = Math.min(...allPrices);
+        }
+
+        return {
+          title: rawTitle,
+          author,
+          asin,
+          buyBox,
+          usedMin: usedMin || buyBox,
+          domain
+        };
       }
+      return null;
+    } catch (e) {
+      return null;
     }
+  };
 
-    // Pattern 4: Fallback to all prices
-    if (!usedMin && buyBox) {
-      usedMin = buyBox;
+  // Try primary marketplace domain first
+  const primary = await queryDomain(primaryDomain);
+  if (primary && primary.title) return primary;
+
+  // Fallback to other marketplace domain if not indexed on primary
+  return await queryDomain(fallbackDomain);
+}
+
+/**
+ * 2. Apple Books / iTunes Ebook API
+ * 100% Free, NO API key required, ultra-fast (~120ms), no 429 rate limits
+ */
+async function fetchAppleBooks(barcode) {
+  try {
+    const res = await axios.get(`https://itunes.apple.com/search?term=${barcode}&entity=ebook&limit=1`, {
+      timeout: 3000
+    });
+    const item = res.data?.results?.[0];
+    if (item && item.trackName) {
+      return {
+        title: item.trackName,
+        author: item.artistName || null,
+        category: item.genres?.[0] || 'Books'
+      };
     }
-
-    return { usedMin, buyBox };
-  } catch (err) {
-    // Network or captcha fallback - returns null smoothly
+    return null;
+  } catch (e) {
     return null;
   }
 }
 
 /**
- * Fetch book/media metadata directly from phone
+ * 3. OpenLibrary Fast Search API
+ * Compliant User-Agent to avoid ECONNRESET and 1s rate limit
  */
-async function fetchMetadataOnDevice(barcode) {
-  const cleanBarcode = normalizeBarcode(barcode);
-  const isBook = cleanBarcode.startsWith('978') || cleanBarcode.startsWith('979') || cleanBarcode.length === 10;
-
-  let title = 'Unknown Item';
-  let publisher = '';
-  let author = '';
-  let category = isBook ? 'Books' : 'Media / General';
-  let asin = isBook ? (cleanBarcode.length === 13 ? isbn13to10(cleanBarcode) : cleanBarcode) : cleanBarcode;
-  let year = '';
-
-  if (isBook) {
-    const isbnQuery = cleanBarcode.length === 10 ? isbn10to13(cleanBarcode) : cleanBarcode;
-    try {
-      // 1. Try OpenLibrary Edition endpoint (fast, free, no keys needed)
-      const olRes = await axios.get(`https://openlibrary.org/isbn/${isbnQuery}.json`, {
-        headers: { 'User-Agent': 'AmazonScoutApp/1.0 (reseller-assistant)' },
-        timeout: 3500
-      });
-      if (olRes.data) {
-        title = olRes.data.title || title;
-        if (olRes.data.publishers && olRes.data.publishers.length > 0) {
-          publisher = olRes.data.publishers[0];
-        }
-        if (olRes.data.publish_date) {
-          year = olRes.data.publish_date;
-        }
+async function fetchOpenLibrary(barcode) {
+  try {
+    // 3a. Search API (fast Solr/Elasticsearch index)
+    const res = await axios.get(
+      `https://openlibrary.org/search.json?q=${barcode}&fields=title,author_name,publisher,publish_year&limit=1`,
+      {
+        headers: { 'User-Agent': 'AmazonScoutApp/1.0 (contact@amazonscout.app)' },
+        timeout: 4000
       }
-    } catch (olErr) {
-      // 2. Fallback to Google Books
-      try {
-        const gbRes = await axios.get(`https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanBarcode}`, {
-          timeout: 3000
-        });
-        if (gbRes.data && gbRes.data.items && gbRes.data.items.length > 0) {
-          const info = gbRes.data.items[0].volumeInfo;
-          title = info.title || title;
-          publisher = info.publisher || publisher;
-          author = info.authors ? info.authors.join(', ') : '';
-          year = info.publishedDate ? info.publishedDate.substring(0, 4) : year;
-          if (info.categories && info.categories.length > 0) {
-            category = info.categories[0];
-          }
-        }
-      } catch (gbErr) {
-        // Fallback gracefully
-      }
+    );
+    const doc = res.data?.docs?.[0];
+    if (doc && doc.title) {
+      return {
+        title: doc.title,
+        author: doc.author_name?.[0] || null,
+        publisher: doc.publisher?.[0] || null,
+        year: doc.publish_year?.[0] || null
+      };
     }
-  } else {
-    // UPC / EAN media lookup
-    try {
-      const upcRes = await axios.get(`https://api.upcitemdb.com/prod/trial/lookup?upc=${cleanBarcode}`, {
-        timeout: 3500
-      });
-      if (upcRes.data && upcRes.data.items && upcRes.data.items.length > 0) {
-        const item = upcRes.data.items[0];
-        title = item.title || title;
-        publisher = item.brand || item.publisher || '';
-        category = item.category || category;
-      }
-    } catch (upcErr) {
-      // Graceful fallback
-    }
+  } catch (e) {
+    // Try legacy endpoint if search times out
   }
 
-  return {
-    barcode: cleanBarcode,
-    asin: asin || cleanBarcode,
-    title,
-    publisher,
-    author,
-    category,
-    year
-  };
+  try {
+    // 3b. Legacy ISBN endpoint fallback
+    const res = await axios.get(`https://openlibrary.org/isbn/${barcode}.json`, {
+      headers: { 'User-Agent': 'AmazonScoutApp/1.0 (contact@amazonscout.app)' },
+      timeout: 3500
+    });
+    if (res.data && res.data.title) {
+      return {
+        title: res.data.title,
+        publisher: res.data.publishers?.[0] || null,
+        year: res.data.publish_date || null
+      };
+    }
+  } catch (e) {
+    // Fallback smoothly
+  }
+
+  return null;
+}
+
+/**
+ * 4. UPCitemdb API for DVDs, Blu-rays, Video Games, and Non-Book Media
+ */
+async function fetchUPCItemDb(barcode) {
+  try {
+    const res = await axios.get(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`, {
+      timeout: 3500
+    });
+    const item = res.data?.items?.[0];
+    if (item && item.title) {
+      return {
+        title: item.title,
+        publisher: item.brand || item.publisher || null,
+        category: item.category || 'Media / General'
+      };
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
 }
 
 /**
@@ -198,28 +241,52 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
   }
 
   try {
-    // 2. Fetch metadata & live pricing concurrently directly from phone
     const isBook = barcode.startsWith('978') || barcode.startsWith('979') || barcode.length === 10;
     const computedAsin = isBook ? (barcode.length === 13 ? isbn13to10(barcode) : barcode) : barcode;
 
-    const [meta, pricing] = await Promise.all([
-      fetchMetadataOnDevice(barcode),
-      fetchAmazonPricing(computedAsin, marketplace)
-    ]);
+    // 2. Concurrently query Amazon live search, Apple Books, and OpenLibrary
+    const lookups = [
+      scrapeAmazonSearch(barcode, marketplace),
+      fetchOpenLibrary(barcode)
+    ];
+
+    if (isBook) {
+      lookups.push(fetchAppleBooks(barcode));
+    } else {
+      lookups.push(fetchUPCItemDb(barcode));
+    }
+
+    const [amzRes, olRes, thirdRes] = await Promise.allSettled(lookups);
+
+    const amz = amzRes.status === 'fulfilled' ? amzRes.value : null;
+    const ol = olRes.status === 'fulfilled' ? olRes.value : null;
+    const third = thirdRes.status === 'fulfilled' ? thirdRes.value : null;
+
+    // Aggregate the best title, author, and publisher across all sources
+    const title = amz?.title || third?.title || ol?.title || 'Unknown Item';
+    const author = amz?.author || third?.author || ol?.author || '';
+    const publisher = ol?.publisher || third?.publisher || '';
+    const category = third?.category || (isBook ? 'Books' : 'Media / General');
+    const year = ol?.year || '';
+
+    // ASIN and pricing
+    const asin = amz?.asin || computedAsin || barcode;
+    const usedMin = amz?.usedMin || null;
+    const buyBox = amz?.buyBox || null;
 
     // 3. Evaluate restrictions on-device
     const restriction = evaluateRestrictions({
-      title: meta.title,
-      publisher: meta.publisher,
-      brand: meta.publisher,
-      category: meta.category
+      title,
+      publisher,
+      brand: publisher,
+      category
     });
 
     const isCanada = marketplace !== 'US';
     const domain = isCanada ? 'https://www.amazon.ca' : 'https://www.amazon.com';
     const sellerCentralDomain = isCanada ? 'https://sellercentral.amazon.ca' : 'https://sellercentral.amazon.com';
 
-    const asinOrQuery = meta.asin || computedAsin || barcode;
+    const asinOrQuery = asin || barcode;
     const sellerCentralUrl = `${sellerCentralDomain}/productsearch?q=${asinOrQuery}`;
     const amazonProductUrl = `${domain}/dp/${asinOrQuery}`;
 
@@ -229,11 +296,11 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       marketplace,
       currency: isCanada ? 'CAD' : 'USD',
       currencyPrefix: isCanada ? 'CDN$ ' : '$',
-      title: meta.title,
-      publisher: meta.publisher,
-      author: meta.author,
-      category: meta.category,
-      year: meta.year,
+      title,
+      publisher,
+      author,
+      category,
+      year,
       status: restriction.status,
       badge: restriction.badge,
       badgeColor: restriction.badgeColor,
@@ -241,8 +308,8 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       canSell: restriction.canSell,
       requiresInvoices: restriction.requiresInvoices,
       matchedName: restriction.matchedName || null,
-      usedMin: pricing?.usedMin || null,
-      usedBuyBox: pricing?.buyBox || null,
+      usedMin,
+      usedBuyBox: buyBox,
       usedOffers: null,
       sellerCentralUrl,
       amazonProductUrl,
