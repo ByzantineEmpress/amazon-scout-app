@@ -40,7 +40,7 @@ async function runTests() {
       console.log(`Reason: ${res.reason}`);
       console.log(`Payload Size: ~${JSON.stringify(res).length} bytes`);
     } catch (err) {
-      console.error(`Error testing ${tc.barcode}:`, err.message);
+      console.error('Error testing barcode:', tc.barcode, err.message);
     }
   }
 

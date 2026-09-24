@@ -174,9 +174,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A202C',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '88%',
-    overflow: 'hidden',
-    paddingBottom: Platform.OS === 'android' ? 16 : 0
+    maxHeight: '88%'
   },
   statusBanner: {
     paddingVertical: 14,
@@ -361,11 +359,18 @@ const styles = StyleSheet.create({
   },
   scanNextButton: {
     backgroundColor: '#3182CE',
-    paddingVertical: 18,
+    paddingVertical: 16,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: Platform.OS === 'android' ? 38 : 20, // Clean clearance above Android Home button & nav bar
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24
+    elevation: 4,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84
   },
   scanNextButtonText: {
     color: '#FFFFFF',

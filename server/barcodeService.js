@@ -109,7 +109,7 @@ async function fetchMetadataOpen(barcode) {
     }
   } catch (err) {
     // Network / API timeout or rate limit - graceful fallback
-    console.warn(`Lookup fallback for ${cleanBarcode}:`, err.message);
+    console.warn('Lookup fallback for barcode:', cleanBarcode, err.message);
   }
 
   return {

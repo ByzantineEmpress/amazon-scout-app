@@ -385,7 +385,7 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
     localCache.set(cacheKey, response);
     return response;
   } catch (err) {
-    console.warn(`On-device scan error for ${barcode}:`, err.message);
+    console.warn('On-device scan error for barcode:', barcode, err.message);
 
     // Save to offline queue if network timed out
     await addToOfflineQueue(barcode);

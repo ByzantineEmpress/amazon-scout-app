@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A202C',
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: Platform.OS === 'android' ? 28 : 16
+    paddingBottom: Platform.OS === 'android' ? 36 : 18
   },
   manualEntryBtn: {
     backgroundColor: '#2D3748',

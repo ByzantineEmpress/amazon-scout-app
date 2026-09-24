@@ -8,8 +8,25 @@ const { isSpApiConfigured } = require('./amazonSpApi');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable CORS for mobile app access
-app.use(cors());
+// Restrictive CORS policy to prevent unauthorized cross-origin requests
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : ['http://localhost:8081', 'http://localhost:19006', 'http://localhost:3000'];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser agents (mobile app, curl) where origin header is not set
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Blocked by CORS policy'));
+  },
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Health check endpoint
