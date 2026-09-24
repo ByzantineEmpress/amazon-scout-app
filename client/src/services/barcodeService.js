@@ -46,30 +46,39 @@ export function normalizeBarcode(raw) {
 
 /**
  * 1. Live Amazon Search Extractor (Gets Real Title, ASIN, Buy Box, and Lowest Used Price)
- * Runs directly on-device with zero server needed
+ * Multi-block parsing, ISBN-10 physical prioritization, $0 Audible filter, and CA/US cross-fallback
  */
 async function scrapeAmazonSearch(barcode, marketplace = 'CA') {
+  const isBook = barcode.startsWith('978') || barcode.startsWith('979') || barcode.length === 10;
+  const isbn10 = isBook && barcode.length === 13 ? isbn13to10(barcode) : (barcode.length === 10 ? barcode : null);
+
+  const queries = isbn10 ? [isbn10, barcode] : [barcode];
   const primaryDomain = marketplace === 'US' ? 'https://www.amazon.com' : 'https://www.amazon.ca';
   const fallbackDomain = marketplace === 'US' ? 'https://www.amazon.ca' : 'https://www.amazon.com';
 
-  const queryDomain = async (domain) => {
+  const trySearch = async (domain, query) => {
     try {
-      const res = await axios.get(`${domain}/s?k=${barcode}`, {
+      const isCa = domain.includes('.ca');
+      const res = await axios.get(`${domain}/s?k=${query}`, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': domain.includes('.ca') ? 'en-CA,en-US;q=0.9,en;q=0.8' : 'en-US,en;q=0.9'
+          'Accept-Language': isCa ? 'en-CA,en-US;q=0.9,en;q=0.8' : 'en-US,en;q=0.9'
         },
         timeout: 4500
       });
 
       const html = res.data;
-      if (typeof html !== 'string') return null;
+      if (typeof html !== 'string' || html.length < 5000) return null;
+      if (html.includes('No results for') || html.includes('did not match any products')) return null;
 
-      // Extract search result blocks
       const blocks = html.split('data-component-type="s-search-result"').slice(1);
+      if (blocks.length === 0) return null;
+
+      let bestPhysical = null;
+      let bestAny = null;
+
       for (const b of blocks) {
-        // Extract title
         const titleMatch = b.match(/<h2[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i) ||
                            b.match(/class="a-size-[^"]*a-color-base[^"]*">([^<]+)<\/span>/i);
         if (!titleMatch) continue;
@@ -80,56 +89,107 @@ async function scrapeAmazonSearch(barcode, marketplace = 'CA') {
           .replace(/&quot;/g, '"')
           .trim();
 
-        if (rawTitle.toLowerCase().includes('no results for') || rawTitle.toLowerCase().includes('need help')) {
-          continue;
-        }
+        if (rawTitle.toLowerCase().includes('no results') || rawTitle.toLowerCase().includes('need help')) continue;
 
-        // Extract ASIN
         const asinMatch = b.match(/data-asin="([A-Z0-9]{10})"/i);
         const asin = asinMatch ? asinMatch[1] : null;
 
-        // Extract Author
+        const isDigital = (rawTitle.toLowerCase().includes('kindle') || 
+                           rawTitle.toLowerCase().includes('audible') || 
+                           (asin && asin.startsWith('B0')));
+
         const authorMatch = b.match(/by\s+<[^>]+>([^<]+)<\/[^>]+>/i) ||
                             b.match(/by\s+<span[^>]*>([^<]+)<\/span>/i);
         const author = authorMatch ? authorMatch[1].trim() : null;
 
-        // Extract BuyBox
-        const bbMatch = b.match(/class="a-price-whole">([0-9,]+)<span class="a-price-fraction">([0-9]{2})<\/span>/);
-        const buyBox = bbMatch ? parseFloat(bbMatch[1].replace(/,/g, '') + '.' + bbMatch[2]) : null;
-
-        // Extract Used Price (e.g. "Used from CDN$ 12.61" or "More Buying Choices CDN$ 11.50")
+        // Used price
         const usedMatch = b.match(/(?:Used|used)\s+(?:and\s+New\s+)?from\s*(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i) ||
                           b.match(/More\s+Buying\s+Choices[\s\S]*?(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i);
         let usedMin = usedMatch ? parseFloat(usedMatch[1]) : null;
 
-        // Fallback: look at all prices in this specific block
-        const allPrices = [...b.matchAll(/class="a-offscreen">(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})<\/span>/gi)]
-          .map(m => parseFloat(m[1]));
-        if (!usedMin && allPrices.length > 0) {
-          usedMin = Math.min(...allPrices);
+        // BuyBox
+        const bbMatch = b.match(/class="a-price-whole">([0-9,]+)<span class="a-price-fraction">([0-9]{2})<\/span>/);
+        const buyBox = bbMatch ? parseFloat(bbMatch[1].replace(/,/g, '') + '.' + bbMatch[2]) : null;
+
+        // Filter out $0.00 Audible trial trap
+        if (!usedMin) {
+          const offscreenPrices = [...b.matchAll(/(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/gi)]
+            .map(m => parseFloat(m[1]))
+            .filter(p => p > 1.50);
+          if (offscreenPrices.length > 0) {
+            usedMin = Math.min(...offscreenPrices);
+          }
         }
 
-        return {
+        const candidate = {
           title: rawTitle,
           author,
-          asin,
+          asin: asin || query,
           buyBox,
           usedMin: usedMin || buyBox,
-          domain
+          domain,
+          isDigital
         };
+
+        if (!isDigital && candidate.usedMin) {
+          return candidate;
+        }
+
+        if (!bestPhysical && !isDigital) bestPhysical = candidate;
+        if (!bestAny) bestAny = candidate;
       }
-      return null;
+
+      return bestPhysical || bestAny;
     } catch (e) {
       return null;
     }
   };
 
-  // Try primary marketplace domain first
-  const primary = await queryDomain(primaryDomain);
-  if (primary && primary.title) return primary;
+  // 1. Try primary domain (first with ISBN-10, then barcode)
+  for (const q of queries) {
+    const res = await trySearch(primaryDomain, q);
+    if (res && res.usedMin) return res;
+  }
 
-  // Fallback to other marketplace domain if not indexed on primary
-  return await queryDomain(fallbackDomain);
+  // 2. Try fallback domain if no used price on primary
+  for (const q of queries) {
+    const res = await trySearch(fallbackDomain, q);
+    if (res && res.usedMin) {
+      if (primaryDomain.includes('.ca') && res.domain.includes('.com')) {
+        res.usedMin = parseFloat((res.usedMin * 1.36).toFixed(2));
+        res.isUsFallback = true;
+      }
+      return res;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 2. AbeBooks Used Book Price Resolver (Owned by Amazon)
+ * World's largest used book catalog, keyless, zero captchas
+ */
+async function fetchAbeBooksPrice(barcode, marketplace = 'CA') {
+  try {
+    const url = `https://www.abebooks.com/servlet/SearchResults?isbn=${barcode}&sortby=17`;
+    const res = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      },
+      timeout: 4000
+    });
+    const match = res.data.match(/data-test-id="listing-price"[^>]*>[\s\S]*?(?:US\$|CDN\$|\$)\s*([0-9]+\.[0-9]{2})/i);
+    if (match) {
+      const usdPrice = parseFloat(match[1]);
+      const cadPrice = parseFloat((usdPrice * 1.36).toFixed(2));
+      return {
+        usedMin: marketplace === 'US' ? usdPrice : cadPrice,
+        source: 'AbeBooks / Amazon Used'
+      };
+    }
+  } catch (e) {}
+  return null;
 }
 
 /**
@@ -244,7 +304,7 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
     const isBook = barcode.startsWith('978') || barcode.startsWith('979') || barcode.length === 10;
     const computedAsin = isBook ? (barcode.length === 13 ? isbn13to10(barcode) : barcode) : barcode;
 
-    // 2. Concurrently query Amazon live search, Apple Books, and OpenLibrary
+    // 2. Concurrently query Amazon live search, AbeBooks, Apple Books, and OpenLibrary
     const lookups = [
       scrapeAmazonSearch(barcode, marketplace),
       fetchOpenLibrary(barcode)
@@ -252,15 +312,17 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
 
     if (isBook) {
       lookups.push(fetchAppleBooks(barcode));
+      lookups.push(fetchAbeBooksPrice(barcode, marketplace));
     } else {
       lookups.push(fetchUPCItemDb(barcode));
     }
 
-    const [amzRes, olRes, thirdRes] = await Promise.allSettled(lookups);
+    const [amzRes, olRes, thirdRes, fourthRes] = await Promise.allSettled(lookups);
 
     const amz = amzRes.status === 'fulfilled' ? amzRes.value : null;
     const ol = olRes.status === 'fulfilled' ? olRes.value : null;
     const third = thirdRes.status === 'fulfilled' ? thirdRes.value : null;
+    const abe = (isBook && fourthRes?.status === 'fulfilled') ? fourthRes.value : null;
 
     // Aggregate the best title, author, and publisher across all sources
     const title = amz?.title || third?.title || ol?.title || 'Unknown Item';
@@ -270,9 +332,13 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
     const year = ol?.year || '';
 
     // ASIN and pricing
+    const isCanada = marketplace !== 'US';
     const asin = amz?.asin || computedAsin || barcode;
-    const usedMin = amz?.usedMin || null;
+    const usedMin = amz?.usedMin || abe?.usedMin || null;
     const buyBox = amz?.buyBox || null;
+    const priceSource = amz?.usedMin
+      ? (amz.isUsFallback ? 'Amazon.com (est. CAD)' : (isCanada ? 'Amazon.ca' : 'Amazon.com'))
+      : (abe?.usedMin ? 'AbeBooks / Used Market' : null);
 
     // 3. Evaluate restrictions on-device
     const restriction = evaluateRestrictions({
@@ -282,7 +348,6 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       category
     });
 
-    const isCanada = marketplace !== 'US';
     const domain = isCanada ? 'https://www.amazon.ca' : 'https://www.amazon.com';
     const sellerCentralDomain = isCanada ? 'https://sellercentral.amazon.ca' : 'https://sellercentral.amazon.com';
 
@@ -311,6 +376,7 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       usedMin,
       usedBuyBox: buyBox,
       usedOffers: null,
+      priceSource,
       sellerCentralUrl,
       amazonProductUrl,
       timestamp: Date.now()

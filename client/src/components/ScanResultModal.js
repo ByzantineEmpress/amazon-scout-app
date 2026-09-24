@@ -91,21 +91,28 @@ export default function ScanResultModal({ visible, item, onClose }) {
               </Text>
               
               {item.usedMin || item.usedBuyBox ? (
-                <View style={styles.priceGrid}>
-                  <View style={styles.priceBox}>
-                    <Text style={styles.priceBoxLabel}>Lowest Used</Text>
-                    <Text style={styles.priceBoxValue}>
-                      {item.usedMin ? `${item.currencyPrefix || 'CDN$ '}${Number(item.usedMin).toFixed(2)}` : 'N/A'}
-                    </Text>
-                  </View>
+                <>
+                  <View style={styles.priceGrid}>
+                    <View style={styles.priceBox}>
+                      <Text style={styles.priceBoxLabel}>Lowest Used</Text>
+                      <Text style={styles.priceBoxValue}>
+                        {item.usedMin ? `${item.currencyPrefix || 'CDN$ '}${Number(item.usedMin).toFixed(2)}` : 'N/A'}
+                      </Text>
+                    </View>
 
-                  <View style={styles.priceBox}>
-                    <Text style={styles.priceBoxLabel}>Buy Box</Text>
-                    <Text style={styles.priceBoxValue}>
-                      {item.usedBuyBox ? `${item.currencyPrefix || 'CDN$ '}${Number(item.usedBuyBox).toFixed(2)}` : 'N/A'}
-                    </Text>
+                    <View style={styles.priceBox}>
+                      <Text style={styles.priceBoxLabel}>Buy Box</Text>
+                      <Text style={styles.priceBoxValue}>
+                        {item.usedBuyBox ? `${item.currencyPrefix || 'CDN$ '}${Number(item.usedBuyBox).toFixed(2)}` : 'N/A'}
+                      </Text>
+                    </View>
                   </View>
-                </View>
+                  {item.priceSource ? (
+                    <Text style={styles.priceSourceBadge}>
+                      📍 {item.priceSource}
+                    </Text>
+                  ) : null}
+                </>
               ) : (
                 <TouchableOpacity
                   style={styles.livePriceQuickBtn}
@@ -291,6 +298,13 @@ const styles = StyleSheet.create({
     color: '#48BB78',
     fontSize: 20,
     fontWeight: '900'
+  },
+  priceSourceBadge: {
+    color: '#A0AEC0',
+    fontSize: 11,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 6
   },
   livePriceQuickBtn: {
     backgroundColor: 'rgba(72, 187, 120, 0.15)',
