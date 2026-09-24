@@ -84,11 +84,8 @@ export async function checkForUpdate() {
     // If repo has no releases yet or rate limited
     if (err.response && err.response.status === 404) {
       return {
-        success: true,
-        updateAvailable: false,
-        currentVersion: CURRENT_VERSION,
-        latestVersion: CURRENT_VERSION,
-        notes: 'No releases published yet.'
+        success: false,
+        error: 'No releases found or repository is inaccessible (404).'
       };
     }
 
