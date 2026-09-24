@@ -37,14 +37,16 @@ export async function checkForUpdate() {
     const settings = await getSettings().catch(() => ({}));
     const headers = {
       'Accept': 'application/vnd.github.v3+json',
-      'User-Agent': `AmazonScout/${CURRENT_VERSION}`
+      'User-Agent': `AmazonScout/${CURRENT_VERSION}`,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache'
     };
 
     if (settings?.githubToken) {
       headers['Authorization'] = `token ${settings.githubToken.trim()}`;
     }
 
-    const response = await axios.get(GITHUB_LATEST_RELEASE_API, {
+    const response = await axios.get(`${GITHUB_LATEST_RELEASE_API}?_t=${Date.now()}`, {
       headers,
       timeout: 8000
     });
