@@ -104,6 +104,10 @@ export async function checkForUpdate() {
  */
 export async function openUpdateDownload(downloadUrl) {
   if (!downloadUrl) return;
+  // Security validation: only allow official HTTPS links from github.com
+  if (!downloadUrl.startsWith('https://github.com/')) {
+    throw new Error('Security Error: Only verified GitHub HTTPS download URLs can be opened.');
+  }
   const canOpen = await Linking.canOpenURL(downloadUrl);
   if (canOpen) {
     await Linking.openURL(downloadUrl);
