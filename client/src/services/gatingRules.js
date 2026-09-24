@@ -230,6 +230,30 @@ export const GATED_VIDEO_GAME_BRANDS = [
  */
 export function evaluateRestrictions(itemData) {
   const { title = '', publisher = '', brand = '', category = '', msrp = 0 } = itemData;
+
+  const cleanTitle = (title || '').trim().toLowerCase();
+  const cleanPublisher = (publisher || '').trim().toLowerCase();
+  const cleanBrand = (brand || '').trim().toLowerCase();
+
+  // If the item is unknown / unverified, restrictions cannot be determined
+  const isUnknown = !cleanTitle || 
+                    cleanTitle === 'unknown item' || 
+                    cleanTitle === 'unknown product' || 
+                    cleanTitle === 'unknown' ||
+                    cleanTitle.startsWith('item queued offline');
+
+  if (isUnknown && !cleanPublisher && !cleanBrand) {
+    return {
+      status: 'UNKNOWN',
+      badge: '⚠️ UNKNOWN (CHECK CENTRAL)',
+      badgeColor: '#ECC94B', // Bold Warning Yellow
+      textColor: '#1A202C',  // High-contrast dark text on bright yellow
+      reason: 'Product metadata could not be verified. Publisher, brand, and gating restrictions are UNKNOWN. Tap 1-Tap Seller Central below to verify eligibility before purchasing.',
+      canSell: null,
+      requiresInvoices: false
+    };
+  }
+
   const searchableText = `${title} ${publisher} ${brand} ${category}`.toLowerCase();
 
   // 1. Check DVD / Blu-ray MSRP Threshold rule

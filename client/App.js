@@ -79,6 +79,8 @@ export default function App() {
     try {
       if (status === 'HARD_GATED' || status === 'RESTRICTED') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else if (status === 'UNKNOWN' || status === 'CAUTION') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }

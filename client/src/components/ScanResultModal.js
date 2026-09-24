@@ -15,6 +15,7 @@ export default function ScanResultModal({ visible, item, onClose }) {
 
   const isRestricted = item.status === 'HARD_GATED' || item.status === 'RESTRICTED';
   const isSafe = item.status === 'UNGATED';
+  const isUnknown = item.status === 'UNKNOWN';
 
   const handleOpenSellerCentral = async () => {
     if (item.sellerCentralUrl) {
@@ -43,7 +44,9 @@ export default function ScanResultModal({ visible, item, onClose }) {
         <View style={styles.cardContainer}>
           {/* Header Status Banner */}
           <View style={[styles.statusBanner, { backgroundColor: item.badgeColor || '#4A5568' }]}>
-            <Text style={styles.statusBannerText}>{item.badge || 'SCANNED'}</Text>
+            <Text style={[styles.statusBannerText, { color: item.textColor || (isUnknown ? '#1A202C' : '#FFFFFF') }]}>
+              {item.badge || 'SCANNED'}
+            </Text>
           </View>
 
           <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentPadding}>
@@ -71,10 +74,10 @@ export default function ScanResultModal({ visible, item, onClose }) {
             {/* Restriction Alert Box */}
             <View style={[
               styles.reasonBox,
-              isRestricted ? styles.reasonBoxDanger : (isSafe ? styles.reasonBoxSafe : styles.reasonBoxWarning)
+              isRestricted ? styles.reasonBoxDanger : (isUnknown ? styles.reasonBoxUnknown : (isSafe ? styles.reasonBoxSafe : styles.reasonBoxWarning))
             ]}>
-              <Text style={styles.reasonTitle}>
-                {isRestricted ? '⚠️ RESTRICTION ALERT' : (isSafe ? '✅ ELIGIBILITY STATUS' : 'ℹ️ NOTE')}
+              <Text style={[styles.reasonTitle, isUnknown && styles.reasonTitleUnknown]}>
+                {isRestricted ? '⚠️ RESTRICTION ALERT' : (isUnknown ? '❓ UNKNOWN ITEM - CHECK RESTRICTIONS' : (isSafe ? '✅ ELIGIBILITY STATUS' : 'ℹ️ NOTE'))}
               </Text>
               <Text style={styles.reasonText}>{item.reason}</Text>
               {item.requiresInvoices ? (
@@ -244,11 +247,19 @@ const styles = StyleSheet.create({
     borderColor: '#DD6B20',
     borderWidth: 1.5
   },
+  reasonBoxUnknown: {
+    backgroundColor: 'rgba(236, 201, 75, 0.15)',
+    borderColor: '#ECC94B',
+    borderWidth: 1.5
+  },
   reasonTitle: {
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 13,
     marginBottom: 4
+  },
+  reasonTitleUnknown: {
+    color: '#ECC94B'
   },
   reasonText: {
     color: '#E2E8F0',

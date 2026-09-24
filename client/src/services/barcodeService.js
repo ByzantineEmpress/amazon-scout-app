@@ -369,6 +369,7 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       status: restriction.status,
       badge: restriction.badge,
       badgeColor: restriction.badgeColor,
+      textColor: restriction.textColor || '#FFFFFF',
       reason: restriction.reason,
       canSell: restriction.canSell,
       requiresInvoices: restriction.requiresInvoices,
