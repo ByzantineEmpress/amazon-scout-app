@@ -6,7 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Platform
+  Platform,
+  Linking
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -14,11 +15,21 @@ export default function ScanResultModal({ visible, item, onClose }) {
   if (!item) return null;
 
   const isRestricted = item.status === 'HARD_GATED' || item.status === 'RESTRICTED';
+  const isApprovalRequired = item.status === 'APPROVAL_REQUIRED';
   const isSafe = item.status === 'UNGATED';
   const isUnknown = item.status === 'UNKNOWN';
 
   const handleOpenSellerCentral = async () => {
     if (item.sellerCentralUrl) {
+      try {
+        const canOpen = await Linking.canOpenURL(item.sellerCentralUrl);
+        if (canOpen) {
+          await Linking.openURL(item.sellerCentralUrl);
+          return;
+        }
+      } catch (err) {
+        // Fall back to WebBrowser
+      }
       await WebBrowser.openBrowserAsync(item.sellerCentralUrl, {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET
       });
@@ -74,12 +85,17 @@ export default function ScanResultModal({ visible, item, onClose }) {
             {/* Restriction Alert Box */}
             <View style={[
               styles.reasonBox,
-              isRestricted ? styles.reasonBoxDanger : (isUnknown ? styles.reasonBoxUnknown : (isSafe ? styles.reasonBoxSafe : styles.reasonBoxWarning))
+              isRestricted ? styles.reasonBoxDanger : (isApprovalRequired ? styles.reasonBoxApproval : (isUnknown ? styles.reasonBoxUnknown : (isSafe ? styles.reasonBoxSafe : styles.reasonBoxWarning)))
             ]}>
-              <Text style={[styles.reasonTitle, isUnknown && styles.reasonTitleUnknown]}>
-                {isRestricted ? '⚠️ RESTRICTION ALERT' : (isUnknown ? '❓ UNKNOWN ITEM - CHECK RESTRICTIONS' : (isSafe ? '✅ ELIGIBILITY STATUS' : 'ℹ️ NOTE'))}
+              <Text style={[styles.reasonTitle, isUnknown && styles.reasonTitleUnknown, isApprovalRequired && styles.reasonTitleApproval]}>
+                {isRestricted ? '⛔ INVOICE REQUIRED (HARD GATED)' : (isApprovalRequired ? '⚠️ BRAND RESTRICTION - CHECK APPROVAL' : (isUnknown ? '❓ UNKNOWN ITEM - CHECK RESTRICTIONS' : (isSafe ? '✅ NO KNOWN GATING' : 'ℹ️ NOTE')))}
               </Text>
               <Text style={styles.reasonText}>{item.reason}</Text>
+              {isApprovalRequired ? (
+                <Text style={styles.approvalGuidance}>
+                  💡 Tap "⚡ Check Auto-Approval" below. If Amazon auto-approves you on the spot, BUY IT! If it asks for invoices, PASS.
+                </Text>
+              ) : null}
               {item.requiresInvoices ? (
                 <Text style={styles.invoicesWarning}>
                   ⛔ Requires 10-unit wholesale distributor invoices (Ingram/Baker & Taylor). DO NOT BUY from thrift stores!
@@ -138,11 +154,14 @@ export default function ScanResultModal({ visible, item, onClose }) {
             {/* Quick Actions */}
             <View style={styles.actionButtonsContainer}>
               <TouchableOpacity
-                style={styles.sellerCentralButton}
+                style={[
+                  styles.sellerCentralButton,
+                  isApprovalRequired && styles.sellerCentralButtonApproval
+                ]}
                 onPress={handleOpenSellerCentral}
               >
                 <Text style={styles.sellerCentralButtonText}>
-                  ⚡ 1-Tap Seller Central ({item.marketplace === 'US' ? '.com' : '.ca'})
+                  {isApprovalRequired ? '⚡ Check Auto-Approval (Amazon Seller App)' : `⚡ 1-Tap Seller Central (${item.marketplace === 'US' ? '.com' : '.ca'})`}
                 </Text>
               </TouchableOpacity>
 
@@ -247,6 +266,11 @@ const styles = StyleSheet.create({
     borderColor: '#DD6B20',
     borderWidth: 1.5
   },
+  reasonBoxApproval: {
+    backgroundColor: 'rgba(221, 107, 32, 0.22)',
+    borderColor: '#DD6B20',
+    borderWidth: 2
+  },
   reasonBoxUnknown: {
     backgroundColor: 'rgba(236, 201, 75, 0.15)',
     borderColor: '#ECC94B',
@@ -258,8 +282,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 4
   },
+  reasonTitleApproval: {
+    color: '#F6AD55'
+  },
   reasonTitleUnknown: {
     color: '#ECC94B'
+  },
+  approvalGuidance: {
+    color: '#FBD38D',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 8,
+    lineHeight: 18
   },
   reasonText: {
     color: '#E2E8F0',
@@ -351,6 +385,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center'
+  },
+  sellerCentralButtonApproval: {
+    backgroundColor: '#DD6B20',
+    borderWidth: 2,
+    borderColor: '#FBD38D'
   },
   sellerCentralButtonText: {
     color: '#111111',

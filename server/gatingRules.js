@@ -6,19 +6,33 @@
  * or brand authorization letters.
  */
 
-// 1. Hard-Gated Academic & Textbook Publishers
+function matchKeyword(text, keyword) {
+  const cleanKw = keyword.toLowerCase();
+  if (/^[a-z0-9&]+$/i.test(cleanKw) && cleanKw.length <= 4) {
+    const regex = new RegExp('(?:^|[^a-z0-9])' + cleanKw + '(?:[^a-z0-9]|$)', 'i');
+    return regex.test(text);
+  }
+  return text.toLowerCase().includes(cleanKw);
+}
+
+// 1. Hard-Gated Academic & Textbook Publishers (Strict distributor invoice required)
 const GATED_BOOK_PUBLISHERS = [
+  // --- Academic & Medical Textbooks (Hard-Gated: 10-Unit Distributor Invoices Mandatory) ---
   {
     name: 'Pearson',
     keywords: ['pearson', 'addison-wesley', 'addison wesley', 'prentice hall', 'allyn & bacon', 'benjamin cummings', 'longman', 'peachpit', 'que publishing', 'merrill'],
     severity: 'HARD_GATED',
-    reason: 'Pearson requires official distributor invoices (Ingram/Baker & Taylor) showing 10+ units.',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
+    reason: 'Pearson academic line strictly requires 10-unit wholesale invoices from authorized distributors (Ingram/Baker & Taylor). Thrift store receipts are NOT accepted.',
     autoApprovable: false
   },
   {
     name: 'McGraw-Hill',
     keywords: ['mcgraw-hill', 'mcgraw hill', 'glencoe', 'schaum', 'irwin', 'osborne'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'McGraw-Hill requires wholesale distributor invoices with counterfeit safeguards.',
     autoApprovable: false
   },
@@ -26,6 +40,8 @@ const GATED_BOOK_PUBLISHERS = [
     name: 'Cengage Learning',
     keywords: ['cengage', 'wadsworth', 'brooks/cole', 'brooks cole', 'south-western', 'delmar', 'course technology', 'heinle'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Cengage strictly enforces brand authorization and 10-unit distributor invoices.',
     autoApprovable: false
   },
@@ -33,6 +49,8 @@ const GATED_BOOK_PUBLISHERS = [
     name: 'John Wiley & Sons',
     keywords: ['john wiley', 'wiley & sons', 'wiley', 'jossey-bass', 'jossey bass', 'for dummies'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Wiley requires wholesale distributor invoices to sell on Amazon.',
     autoApprovable: false
   },
@@ -40,6 +58,8 @@ const GATED_BOOK_PUBLISHERS = [
     name: 'Elsevier Health Sciences',
     keywords: ['elsevier', 'saunders', 'mosby', 'churchill livingstone', 'academic press', 'butterworth-heinemann'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Elsevier medical and science texts require manufacturer/distributor authorization.',
     autoApprovable: false
   },
@@ -47,34 +67,44 @@ const GATED_BOOK_PUBLISHERS = [
     name: 'Oxford University Press',
     keywords: ['oxford university press', 'oup usa', 'oxford up'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Oxford UP enforces distributor ungating for academic editions.',
     autoApprovable: false
   },
   {
     name: 'Cambridge University Press',
-    keywords: ['cambridge university press', 'cup usa'],
+    keywords: ['cambridge university press', 'cup usa', 'cambridge up'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Cambridge UP requires distributor invoices for academic titles.',
     autoApprovable: false
   },
   {
     name: 'Macmillan Higher Education',
-    keywords: ['macmillan', 'bedford', "st. martin's", 'w.h. freeman', 'worth publishers', 'palgrave'],
+    keywords: ['bedford', 'w.h. freeman', 'worth publishers', 'palgrave'],
     severity: 'HARD_GATED',
-    reason: 'Macmillan textbook lines require authorized distributor paperwork.',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
+    reason: 'Macmillan college textbook lines require authorized distributor paperwork.',
     autoApprovable: false
   },
   {
     name: 'W.W. Norton & Company',
     keywords: ['w. w. norton', 'w.w. norton', 'norton & company'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Norton anthologies and college texts frequently require distributor ungating.',
     autoApprovable: false
   },
   {
     name: 'Wolters Kluwer / Lippincott',
-    keywords: ['wolters kluwer', 'lippincott williams & wilkins', 'lww', 'aspen publishers'],
+    keywords: ['wolters kluwer', 'lippincott williams & wilkins', 'lippincott', 'lww', 'aspen publishers'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Wolters Kluwer medical and legal titles are gated for third-party sellers.',
     autoApprovable: false
   },
@@ -82,6 +112,8 @@ const GATED_BOOK_PUBLISHERS = [
     name: 'Springer Nature',
     keywords: ['springer', 'springer nature', 'birkhauser', 'humana press'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Springer academic monographs require authorization.',
     autoApprovable: false
   },
@@ -89,15 +121,135 @@ const GATED_BOOK_PUBLISHERS = [
     name: 'Jones & Bartlett Learning',
     keywords: ['jones & bartlett', 'jones and bartlett'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'Jones & Bartlett nursing/health sciences are gated.',
+    autoApprovable: false
+  },
+  {
+    name: 'Nelson Education (Canada)',
+    keywords: ['nelson education', 'nelson thomson', 'nelson college', 'thomson nelson', 'nelson series'],
+    severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
+    reason: 'Nelson Education Canada requires wholesale distributor authorization to resell.',
+    autoApprovable: false
+  },
+  {
+    name: 'McGraw-Hill Ryerson (Canada)',
+    keywords: ['mcgraw-hill ryerson', 'mcgraw hill ryerson', 'ryerson press'],
+    severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
+    reason: 'McGraw-Hill Ryerson requires wholesale distributor invoices with counterfeit safeguards.',
+    autoApprovable: false
+  },
+  {
+    name: 'Emond Publishing (Canada)',
+    keywords: ['emond montgomery', 'emond publishing', 'emond legal'],
+    severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
+    reason: 'Emond Canadian legal/college texts are gated for third-party sellers.',
     autoApprovable: false
   },
   {
     name: 'F.A. Davis',
     keywords: ['f.a. davis', 'fa davis'],
     severity: 'HARD_GATED',
+    badge: '⛔ HARD GATED (INVOICE)',
+    badgeColor: '#E53E3E',
     reason: 'F.A. Davis nursing and medical guides require distributor invoices.',
     autoApprovable: false
+  },
+
+  // --- Major Trade ("Big 5") & Brand Gated Publishers (Candidate for Instant Auto-Approval) ---
+  {
+    name: 'Penguin Random House',
+    keywords: [
+      'penguin random house', 'penguin', 'random house', 'viking', 'doubleday', 'knopf', 'alfred a. knopf',
+      'crown', 'pantheon', 'ballantine', 'bantam', 'dell', 'berkley', 'dutton', 'putnam', 'g.p. putnam',
+      'riverhead', 'avery', 'anchor', 'vintage', 'plume', 'signet', 'ace', 'daw', 'dial', 'puffin',
+      'amphoto', 'ten speed', 'clarkson potter', 'delacorte', 'razorbill', 'waterbrook', 'multnomah',
+      'portfolio', 'sentinel', 'tarcher'
+    ],
+    severity: 'APPROVAL_REQUIRED',
+    badge: '⚠️ APPROVAL REQUIRED',
+    badgeColor: '#DD6B20',
+    reason: 'Penguin Random House brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check Auto-Approval" below — if auto-approved on your account, you can buy; if invoices are required, pass!',
+    autoApprovable: true
+  },
+  {
+    name: 'HarperCollins',
+    keywords: [
+      'harpercollins', 'harper collins', 'william morrow', 'morrow', 'avon', 'balzer + bray', 'balzer & bray',
+      'balzer and bray', 'harlequin', 'harperteen', 'amistad', 'ecco', 'broadside', 'thomas nelson',
+      'zondervan', 'harperone', 'harper wave', 'harper business', 'clarion books', 'harper'
+    ],
+    severity: 'APPROVAL_REQUIRED',
+    badge: '⚠️ APPROVAL REQUIRED',
+    badgeColor: '#DD6B20',
+    reason: 'HarperCollins brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check Auto-Approval" below — if auto-approved on your account, you can buy; if invoices are required, pass!',
+    autoApprovable: true
+  },
+  {
+    name: 'Simon & Schuster',
+    keywords: [
+      'simon & schuster', 'simon and schuster', 'scribner', 'atria', 'pocket books', 'gallery books',
+      'touchstone', 'free press', 'aladdin', 'simon pulse', 'threshold editions', 'howard books', 'adams media'
+    ],
+    severity: 'APPROVAL_REQUIRED',
+    badge: '⚠️ APPROVAL REQUIRED',
+    badgeColor: '#DD6B20',
+    reason: 'Simon & Schuster brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check Auto-Approval" below — if auto-approved on your account, you can buy; if invoices are required, pass!',
+    autoApprovable: true
+  },
+  {
+    name: 'Macmillan',
+    keywords: [
+      'macmillan', 'st. martin', 'st martin', 'st. martins', 'st martins', 'tor books', 'tor', 'forge',
+      'farrar, straus', 'farrar straus', 'fsg', 'henry holt', 'flatiron', 'celadon', 'picador',
+      'roaring brook', 'feiwel', 'first second'
+    ],
+    severity: 'APPROVAL_REQUIRED',
+    badge: '⚠️ APPROVAL REQUIRED',
+    badgeColor: '#DD6B20',
+    reason: 'Macmillan brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check Auto-Approval" below — if auto-approved on your account, you can buy; if invoices are required, pass!',
+    autoApprovable: true
+  },
+  {
+    name: 'Hachette Book Group',
+    keywords: [
+      'hachette', 'little, brown', 'little brown', 'grand central', 'orbit', 'faithwords', 'basic books',
+      'center street', 'publicaffairs', 'running press', 'perseus', 'da capo', 'seal press', 'black dog & leventhal'
+    ],
+    severity: 'APPROVAL_REQUIRED',
+    badge: '⚠️ APPROVAL REQUIRED',
+    badgeColor: '#DD6B20',
+    reason: 'Hachette Book Group brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check Auto-Approval" below — if auto-approved on your account, you can buy; if invoices are required, pass!',
+    autoApprovable: true
+  },
+  {
+    name: 'Scholastic',
+    keywords: [
+      'scholastic', 'arthur a. levine', 'orchard books', 'cartwheel books', 'cartwheel', 'klutz', 'goosebumps'
+    ],
+    severity: 'APPROVAL_REQUIRED',
+    badge: '⚠️ APPROVAL REQUIRED',
+    badgeColor: '#DD6B20',
+    reason: 'Scholastic brand restriction. Amazon gates popular children\'s books for newer accounts. Tap "⚡ Check Auto-Approval" below to test eligibility.',
+    autoApprovable: true
+  },
+  {
+    name: 'Disney Book Group',
+    keywords: [
+      'disney press', 'disney-hyperion', 'disney hyperion', 'disney book', 'marvel press', 'lucasfilm press', 'national geographic kids'
+    ],
+    severity: 'APPROVAL_REQUIRED',
+    badge: '⚠️ APPROVAL REQUIRED',
+    badgeColor: '#DD6B20',
+    reason: 'Disney Book Group brand restriction. Disney publishing lines are gated on Amazon. Tap "⚡ Check Auto-Approval" below to test eligibility.',
+    autoApprovable: true
   }
 ];
 
@@ -153,6 +305,20 @@ const GATED_MEDIA_STUDIOS = [
     autoApprovable: false
   },
   {
+    name: 'Entertainment One / eOne (Canada)',
+    keywords: ['entertainment one', 'eone', 'e-one'],
+    severity: 'HARD_GATED',
+    reason: 'eOne Canadian film and television releases are restricted.',
+    autoApprovable: false
+  },
+  {
+    name: 'Alliance Films (Canada)',
+    keywords: ['alliance films', 'alliance atlantis', 'alliance vivafilm'],
+    severity: 'HARD_GATED',
+    reason: 'Alliance Films Canadian media releases are restricted.',
+    autoApprovable: false
+  },
+  {
     name: 'The Criterion Collection',
     keywords: ['criterion collection', 'criterion'],
     severity: 'CAUTION',
@@ -165,7 +331,7 @@ const GATED_MEDIA_STUDIOS = [
 const GATED_VIDEO_GAME_BRANDS = [
   {
     name: 'Nintendo',
-    keywords: ['nintendo', 'switch', 'pokemon', 'pokémon', 'mario', 'zelda', 'game boy', 'gamecube', '3ds', 'ds'],
+    keywords: ['nintendo', 'nintendo switch', 'pokemon', 'pokémon', 'mario', 'zelda', 'game boy', 'gameboy', 'gamecube', 'nintendo 3ds', 'nintendo ds'],
     severity: 'HARD_GATED',
     reason: 'Nintendo first-party titles and consoles are gated for third-party sellers.',
     autoApprovable: false
@@ -195,8 +361,6 @@ const GATED_VIDEO_GAME_BRANDS = [
 
 /**
  * Check if an item is restricted based on title, publisher, brand, or category
- * @param {Object} itemData - { title, publisher, brand, category, msrp }
- * @returns {Object} Restriction evaluation
  */
 function evaluateRestrictions(itemData) {
   const { title = '', publisher = '', brand = '', category = '', msrp = 0 } = itemData;
@@ -231,9 +395,9 @@ function evaluateRestrictions(itemData) {
     if (msrp >= 25) {
       return {
         status: 'HARD_GATED',
-        badge: 'RESTRICTED',
+        badge: '⛔ HARD GATED (INVOICE)',
         badgeColor: '#E53E3E',
-        reason: 'DVD MSRP exceeds $25 (Amazon blanket restriction on high-MSRP DVDs)',
+        reason: 'DVD MSRP exceeds $25 (Amazon blanket restriction on high-MSRP DVDs requiring invoices)',
         canSell: false,
         requiresInvoices: true
       };
@@ -243,11 +407,11 @@ function evaluateRestrictions(itemData) {
   // 2. Check Book Publishers
   for (const pub of GATED_BOOK_PUBLISHERS) {
     for (const kw of pub.keywords) {
-      if (searchableText.includes(kw)) {
+      if (matchKeyword(searchableText, kw)) {
         return {
           status: pub.severity,
-          badge: pub.severity === 'HARD_GATED' ? 'HARD GATED' : 'CAUTION',
-          badgeColor: pub.severity === 'HARD_GATED' ? '#E53E3E' : '#DD6B20',
+          badge: pub.badge || (pub.severity === 'HARD_GATED' ? '⛔ HARD GATED (INVOICE)' : '⚠️ APPROVAL REQUIRED'),
+          badgeColor: pub.badgeColor || (pub.severity === 'HARD_GATED' ? '#E53E3E' : '#DD6B20'),
           matchedName: pub.name,
           reason: pub.reason,
           canSell: false,
@@ -260,7 +424,7 @@ function evaluateRestrictions(itemData) {
   // 3. Check Media Studios
   for (const studio of GATED_MEDIA_STUDIOS) {
     for (const kw of studio.keywords) {
-      if (searchableText.includes(kw)) {
+      if (matchKeyword(searchableText, kw)) {
         return {
           status: studio.severity,
           badge: studio.severity === 'HARD_GATED' ? 'RESTRICTED' : 'CAUTION',
@@ -277,7 +441,7 @@ function evaluateRestrictions(itemData) {
   // 4. Check Video Game Brands
   for (const gameBrand of GATED_VIDEO_GAME_BRANDS) {
     for (const kw of gameBrand.keywords) {
-      if (searchableText.includes(kw)) {
+      if (matchKeyword(searchableText, kw)) {
         return {
           status: gameBrand.severity,
           badge: gameBrand.severity === 'HARD_GATED' ? 'RESTRICTED' : 'CAUTION',
@@ -294,17 +458,17 @@ function evaluateRestrictions(itemData) {
   // Default: Open / Ungated
   return {
     status: 'UNGATED',
-    badge: 'SAFE TO SELL',
+    badge: '🟢 NO KNOWN GATING',
     badgeColor: '#38A169',
-    reason: 'No publisher, brand, or studio restrictions detected. Safe to list.',
+    reason: 'No publisher brand restrictions detected in database. Tap "Check Seller Central" to confirm eligibility for your account.',
     canSell: true,
     requiresInvoices: false
   };
 }
 
 module.exports = {
-  evaluateRestrictions,
   GATED_BOOK_PUBLISHERS,
   GATED_MEDIA_STUDIOS,
-  GATED_VIDEO_GAME_BRANDS
+  GATED_VIDEO_GAME_BRANDS,
+  evaluateRestrictions
 };
