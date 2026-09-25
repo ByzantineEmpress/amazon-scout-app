@@ -359,15 +359,68 @@ const GATED_VIDEO_GAME_BRANDS = [
   }
 ];
 
+// 4. ISBN Publisher Prefix Registry (Direct Gating Identification by Barcode)
+const ISBN_PUBLISHER_PREFIXES = [
+  // Pearson (Academic Hard Gated)
+  { prefixes: ['978013', '013', '9780201', '0201', '9780321', '0321', '9780134', '0134'], publisher: 'Pearson', severity: 'HARD_GATED', badge: '⛔ HARD GATED (INVOICE)', reason: 'Pearson academic line strictly requires 10-unit wholesale distributor invoices.' },
+  // McGraw-Hill (Academic Hard Gated)
+  { prefixes: ['978007', '007', '9780071', '0071', '9780073', '0073', '9780078', '0078'], publisher: 'McGraw-Hill', severity: 'HARD_GATED', badge: '⛔ HARD GATED (INVOICE)', reason: 'McGraw-Hill requires wholesale distributor invoices with counterfeit safeguards.' },
+  // Wiley (Academic Hard Gated)
+  { prefixes: ['9780471', '0471', '9780470', '0470', '9781118', '1118', '9781119', '1119'], publisher: 'John Wiley & Sons', severity: 'HARD_GATED', badge: '⛔ HARD GATED (INVOICE)', reason: 'Wiley requires wholesale distributor invoices to sell on Amazon.' },
+  // Cengage (Academic Hard Gated)
+  { prefixes: ['9780538', '0538', '9781285', '1285', '9781305', '1305', '9780618', '0618', '9780534', '0534'], publisher: 'Cengage Learning', severity: 'HARD_GATED', badge: '⛔ HARD GATED (INVOICE)', reason: 'Cengage strictly enforces brand authorization and 10-unit distributor invoices.' },
+
+  // Macmillan / St. Martin's Press (Big 5 Approval Required)
+  { prefixes: ['9780312', '0312', '9780374', '0374', '97808050', '08050', '97807653', '07653', '9781250', '1250'], publisher: "St. Martin's Press (Macmillan)", severity: 'APPROVAL_REQUIRED', badge: '⚠️ APPROVAL REQUIRED', reason: 'Macmillan brand restriction (St. Martin\'s Press / Tor / FSG). Amazon gates this for newer accounts. Tap "⚡ Check in Amazon Seller App" below.' },
+  // Penguin Random House (Big 5 Approval Required)
+  { prefixes: ['9780385', '0385', '9780394', '0394', '9780375', '0375', '9780679', '0679', '978014', '014', '9780670', '0670', '9780440', '0440', '9780553', '0553', '9780345', '0345', '9780425', '0425', '9780451', '0451', '9780452', '0452', '9780593', '0593'], publisher: 'Penguin Random House', severity: 'APPROVAL_REQUIRED', badge: '⚠️ APPROVAL REQUIRED', reason: 'Penguin Random House brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check in Amazon Seller App" below.' },
+  // HarperCollins (Big 5 Approval Required)
+  { prefixes: ['978006', '006', '9780688', '0688', '9780380', '0380', '9780060', '0060', '9780061', '0061', '9780062', '0062'], publisher: 'HarperCollins', severity: 'APPROVAL_REQUIRED', badge: '⚠️ APPROVAL REQUIRED', reason: 'HarperCollins brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check in Amazon Seller App" below.' },
+  // Simon & Schuster (Big 5 Approval Required)
+  { prefixes: ['9780671', '0671', '9780684', '0684', '97807432', '07432', '97807434', '07434', '97814165', '14165', '97815011', '15011'], publisher: 'Simon & Schuster', severity: 'APPROVAL_REQUIRED', badge: '⚠️ APPROVAL REQUIRED', reason: 'Simon & Schuster brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check in Amazon Seller App" below.' },
+  // Hachette Book Group (Big 5 Approval Required)
+  { prefixes: ['9780316', '0316', '9780446', '0446', '97814555', '14555', '97804465', '04465'], publisher: 'Hachette Book Group', severity: 'APPROVAL_REQUIRED', badge: '⚠️ APPROVAL REQUIRED', reason: 'Hachette Book Group brand restriction. Amazon gates this for newer accounts. Tap "⚡ Check in Amazon Seller App" below.' },
+  // Scholastic (Approval Required)
+  { prefixes: ['9780590', '0590', '9780439', '0439', '9780545', '0545', '9781338', '1338'], publisher: 'Scholastic', severity: 'APPROVAL_REQUIRED', badge: '⚠️ APPROVAL REQUIRED', reason: 'Scholastic brand restriction. Amazon gates popular children\'s books for newer accounts. Tap "⚡ Check in Amazon Seller App" below.' },
+  // Disney Book Group (Approval Required)
+  { prefixes: ['97807868', '07868', '97814231', '14231', '97814847', '14847', '9781368', '1368'], publisher: 'Disney Book Group', severity: 'APPROVAL_REQUIRED', badge: '⚠️ APPROVAL REQUIRED', reason: 'Disney Book Group brand restriction. Disney books are gated on Amazon. Tap "⚡ Check in Amazon Seller App" below.' }
+];
+
+function checkIsbnPrefix(barcode) {
+  const clean = (barcode || '').replace(/[^0-9X]/gi, '');
+  for (const entry of ISBN_PUBLISHER_PREFIXES) {
+    for (const p of entry.prefixes) {
+      if (clean.startsWith(p)) {
+        return entry;
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Check if an item is restricted based on title, publisher, brand, or category
  */
 function evaluateRestrictions(itemData) {
-  const { title = '', publisher = '', brand = '', category = '', msrp = 0 } = itemData;
+  const { title = '', publisher = '', allPublishers = [], brand = '', author = '', category = '', barcode = '', asin = '', msrp = 0 } = itemData;
 
   const cleanTitle = (title || '').trim().toLowerCase();
   const cleanPublisher = (publisher || '').trim().toLowerCase();
   const cleanBrand = (brand || '').trim().toLowerCase();
+
+  // 1. Direct ISBN Prefix Check (Mathematical certainty from barcode)
+  const prefixMatch = checkIsbnPrefix(barcode) || checkIsbnPrefix(asin);
+  if (prefixMatch) {
+    return {
+      status: prefixMatch.severity,
+      badge: prefixMatch.badge || (prefixMatch.severity === 'HARD_GATED' ? '⛔ HARD GATED (INVOICE)' : '⚠️ APPROVAL REQUIRED'),
+      badgeColor: prefixMatch.severity === 'HARD_GATED' ? '#E53E3E' : '#DD6B20',
+      matchedName: prefixMatch.publisher,
+      reason: prefixMatch.reason,
+      canSell: false,
+      requiresInvoices: prefixMatch.severity === 'HARD_GATED'
+    };
+  }
 
   // If the item is unknown / unverified, restrictions cannot be determined
   const isUnknown = !cleanTitle || 
@@ -388,7 +441,8 @@ function evaluateRestrictions(itemData) {
     };
   }
 
-  const searchableText = `${title} ${publisher} ${brand} ${category}`.toLowerCase();
+  const allPubsStr = Array.isArray(allPublishers) ? allPublishers.join(' ') : '';
+  const searchableText = `${title} ${publisher} ${allPubsStr} ${brand} ${author} ${category}`.toLowerCase();
 
   // 1. Check DVD / Blu-ray MSRP Threshold rule (Amazon gates DVDs with MSRP > $25)
   if (category.toLowerCase().includes('dvd') || category.toLowerCase().includes('movie') || searchableText.includes('dvd')) {

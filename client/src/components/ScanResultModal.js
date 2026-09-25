@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   View,
@@ -10,16 +10,47 @@ import {
   Linking
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as Clipboard from 'expo-clipboard';
+import * as IntentLauncher from 'expo-intent-launcher';
 
 export default function ScanResultModal({ visible, item, onClose }) {
   if (!item) return null;
+
+  const [copyFeedback, setCopyFeedback] = useState(null);
 
   const isRestricted = item.status === 'HARD_GATED' || item.status === 'RESTRICTED';
   const isApprovalRequired = item.status === 'APPROVAL_REQUIRED';
   const isSafe = item.status === 'UNGATED';
   const isUnknown = item.status === 'UNKNOWN';
 
+  const copyToClipboard = async (text, label) => {
+    if (!text) return;
+    try {
+      await Clipboard.setStringAsync(text);
+      setCopyFeedback(`📋 Copied ${label || text} to clipboard!`);
+      setTimeout(() => setCopyFeedback(null), 3000);
+    } catch (e) {}
+  };
+
   const handleOpenSellerCentral = async () => {
+    const asinOrQuery = item.asin || item.barcode;
+    
+    // Always copy ISBN/ASIN to clipboard so user can immediately paste in Seller App
+    if (asinOrQuery) {
+      await copyToClipboard(asinOrQuery, asinOrQuery);
+    }
+
+    // On Android: Try to launch the native Amazon Seller App directly
+    if (Platform.OS === 'android') {
+      try {
+        await IntentLauncher.openApplication('com.amazon.sellermobile.android');
+        return;
+      } catch (err) {
+        // Amazon Seller app is not installed or couldn't be opened, fall through to browser
+      }
+    }
+
+    // Fallback: Open productsearch URL in browser
     if (item.sellerCentralUrl) {
       try {
         const canOpen = await Linking.canOpenURL(item.sellerCentralUrl);
@@ -60,6 +91,13 @@ export default function ScanResultModal({ visible, item, onClose }) {
             </Text>
           </View>
 
+          {/* Copy Toast Feedback */}
+          {copyFeedback ? (
+            <View style={styles.copyToast}>
+              <Text style={styles.copyToastText}>{copyFeedback}</Text>
+            </View>
+          ) : null}
+
           <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentPadding}>
             {/* Title & Metadata */}
             <Text style={styles.titleText} numberOfLines={3}>
@@ -93,7 +131,7 @@ export default function ScanResultModal({ visible, item, onClose }) {
               <Text style={styles.reasonText}>{item.reason}</Text>
               {isApprovalRequired ? (
                 <Text style={styles.approvalGuidance}>
-                  💡 Tap "⚡ Check Auto-Approval" below. If Amazon auto-approves you on the spot, BUY IT! If it asks for invoices, PASS.
+                  💡 Tap "⚡ Open in Amazon Seller App" below. If Amazon auto-approves you on the spot, BUY IT! If it asks for invoices, PASS.
                 </Text>
               ) : null}
               {item.requiresInvoices ? (
@@ -145,10 +183,26 @@ export default function ScanResultModal({ visible, item, onClose }) {
               )}
             </View>
 
-            {/* Barcode & ASIN */}
+            {/* Barcode & ASIN with Tap-to-Copy */}
             <View style={styles.idRow}>
-              <Text style={styles.idText}>Barcode: {item.barcode}</Text>
-              {item.asin ? <Text style={styles.idText}>ASIN: {item.asin}</Text> : null}
+              <TouchableOpacity
+                style={styles.idChip}
+                onPress={() => copyToClipboard(item.barcode, 'Barcode')}
+              >
+                <Text style={styles.idText}>
+                  Barcode: <Text style={styles.idHighlight}>{item.barcode}</Text> 📋
+                </Text>
+              </TouchableOpacity>
+              {item.asin ? (
+                <TouchableOpacity
+                  style={styles.idChip}
+                  onPress={() => copyToClipboard(item.asin, 'ASIN')}
+                >
+                  <Text style={styles.idText}>
+                    ASIN: <Text style={styles.idHighlight}>{item.asin}</Text> 📋
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {/* Quick Actions */}
@@ -161,9 +215,13 @@ export default function ScanResultModal({ visible, item, onClose }) {
                 onPress={handleOpenSellerCentral}
               >
                 <Text style={styles.sellerCentralButtonText}>
-                  {isApprovalRequired ? '⚡ Check Auto-Approval (Amazon Seller App)' : `⚡ 1-Tap Seller Central (${item.marketplace === 'US' ? '.com' : '.ca'})`}
+                  {isApprovalRequired ? '⚡ Open in Amazon Seller App (Auto-Copies ISBN)' : `⚡ Open in Amazon Seller App (${item.marketplace === 'US' ? '.com' : '.ca'})`}
                 </Text>
               </TouchableOpacity>
+
+              <Text style={styles.sellerAppHelpText}>
+                📌 Auto-copies {item.asin || item.barcode} to clipboard — simply paste into Seller App search!
+              </Text>
 
               <TouchableOpacity
                 style={styles.amazonButton}
@@ -208,6 +266,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 20,
     letterSpacing: 1.5
+  },
+  copyToast: {
+    backgroundColor: '#38A169',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  copyToastText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13
   },
   contentScroll: {
     flexGrow: 0
@@ -370,11 +440,29 @@ const styles = StyleSheet.create({
   idRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 8,
     marginBottom: 16
   },
+  idChip: {
+    backgroundColor: '#2D3748',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8
+  },
   idText: {
-    color: '#718096',
+    color: '#A0AEC0',
     fontSize: 12
+  },
+  idHighlight: {
+    color: '#FFFFFF',
+    fontWeight: '700'
+  },
+  sellerAppHelpText: {
+    color: '#CBD5E0',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: -2,
+    marginBottom: 4
   },
   actionButtonsContainer: {
     gap: 10,

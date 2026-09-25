@@ -231,10 +231,14 @@ async function fetchOpenLibrary(barcode) {
     );
     const doc = res.data?.docs?.[0];
     if (doc && doc.title) {
+      const allPublishers = Array.isArray(doc.publisher)
+        ? doc.publisher
+        : (doc.publisher ? [doc.publisher] : []);
       return {
         title: doc.title,
         author: doc.author_name?.[0] || null,
         publisher: doc.publisher?.[0] || null,
+        allPublishers,
         year: doc.publish_year?.[0] || null
       };
     }
@@ -249,9 +253,13 @@ async function fetchOpenLibrary(barcode) {
       timeout: 3500
     });
     if (res.data && res.data.title) {
+      const allPublishers = Array.isArray(res.data.publishers)
+        ? res.data.publishers
+        : (res.data.publishers ? [res.data.publishers] : []);
       return {
         title: res.data.title,
         publisher: res.data.publishers?.[0] || null,
+        allPublishers,
         year: res.data.publish_date || null
       };
     }
@@ -327,7 +335,8 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
     // Aggregate the best title, author, and publisher across all sources
     const title = amz?.title || third?.title || ol?.title || 'Unknown Item';
     const author = amz?.author || third?.author || ol?.author || '';
-    const publisher = ol?.publisher || third?.publisher || '';
+    const allPublishers = ol?.allPublishers || (ol?.publisher ? [ol.publisher] : (third?.publisher ? [third.publisher] : []));
+    let publisher = ol?.publisher || third?.publisher || '';
     const category = third?.category || (isBook ? 'Books' : 'Media / General');
     const year = ol?.year || '';
 
@@ -344,9 +353,18 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
     const restriction = evaluateRestrictions({
       title,
       publisher,
+      allPublishers,
       brand: publisher,
-      category
+      author,
+      category,
+      barcode,
+      asin
     });
+
+    // If restriction matched a known major brand/publisher, display that as the primary publisher
+    if (restriction.matchedName && (!publisher || publisher.toLowerCase().includes('urano') || restriction.status !== 'UNGATED')) {
+      publisher = restriction.matchedName;
+    }
 
     const domain = isCanada ? 'https://www.amazon.ca' : 'https://www.amazon.com';
     const sellerCentralDomain = isCanada ? 'https://sellercentral.amazon.ca' : 'https://sellercentral.amazon.com';
