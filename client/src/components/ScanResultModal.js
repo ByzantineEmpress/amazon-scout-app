@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -7,16 +7,49 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
-  Linking
+  Linking,
+  ActivityIndicator
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import * as IntentLauncher from 'expo-intent-launcher';
+import { fetchEbaySoldLowest, launchEbaySold } from '../services/ebayService';
 
 export default function ScanResultModal({ visible, item, onClose }) {
   if (!item) return null;
 
   const [copyFeedback, setCopyFeedback] = useState(null);
+  const [ebayData, setEbayData] = useState({ loading: true, price: null, currencyPrefix: 'CDN$ ' });
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!item?.barcode && !item?.title) {
+      setEbayData({ loading: false, price: null, currencyPrefix: 'CDN$ ' });
+      return;
+    }
+
+    setEbayData({ loading: true, price: null, currencyPrefix: item.currencyPrefix || (item.marketplace === 'US' ? '$' : 'CDN$ ') });
+
+    fetchEbaySoldLowest(item.barcode, item.title, item.marketplace)
+      .then((res) => {
+        if (isMounted) {
+          setEbayData({
+            loading: false,
+            price: res?.price || null,
+            currencyPrefix: res?.currencyPrefix || (item.marketplace === 'US' ? '$' : 'CDN$ ')
+          });
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setEbayData({ loading: false, price: null, currencyPrefix: item.currencyPrefix || 'CDN$ ' });
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [item?.barcode, item?.title, item?.marketplace]);
 
   const isRestricted = item.status === 'HARD_GATED' || item.status === 'RESTRICTED';
   const isApprovalRequired = item.status === 'APPROVAL_REQUIRED';
@@ -73,6 +106,14 @@ export default function ScanResultModal({ visible, item, onClose }) {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET
       });
     }
+  };
+
+  const handleOpenEbaySold = async () => {
+    const identifier = item.barcode || item.asin || item.title;
+    if (identifier) {
+      await copyToClipboard(identifier, 'ISBN/Barcode');
+    }
+    await launchEbaySold(item.barcode, item.title, item.marketplace);
   };
 
   return (
@@ -180,6 +221,51 @@ export default function ScanResultModal({ visible, item, onClose }) {
                   </Text>
                   <Text style={styles.livePriceSubtext}>Tap to slide up live Canadian used offers</Text>
                 </TouchableOpacity>
+              )}
+            </View>
+
+            {/* eBay Sold Lowest Section */}
+            <View style={styles.ebayContainer}>
+              <View style={styles.ebayHeaderRow}>
+                <Text style={styles.ebayHeaderTitle}>
+                  🏷️ eBay Sold Lowest ({item.marketplace === 'US' ? 'eBay.com 🇺🇸' : 'eBay.ca 🇨🇦'})
+                </Text>
+                <TouchableOpacity style={styles.ebayQuickLinkBtn} onPress={handleOpenEbaySold}>
+                  <Text style={styles.ebayQuickLinkText}>Open eBay ↗</Text>
+                </TouchableOpacity>
+              </View>
+
+              {ebayData.loading ? (
+                <View style={styles.ebayLoadingRow}>
+                  <ActivityIndicator size="small" color="#ECC94B" />
+                  <Text style={styles.ebayLoadingText}>Checking eBay sold comps...</Text>
+                </View>
+              ) : ebayData.price ? (
+                <View style={styles.ebayPriceRow}>
+                  <View>
+                    <Text style={styles.ebayPriceValue}>
+                      {ebayData.currencyPrefix}{Number(ebayData.price).toFixed(2)}
+                    </Text>
+                    <Text style={styles.ebayPriceSub}>Verified sold listing</Text>
+                  </View>
+                  <TouchableOpacity style={styles.ebayActionBtn} onPress={handleOpenEbaySold}>
+                    <Text style={styles.ebayActionBtnText}>⚡ View Sold Comps</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.ebayEmptyRow}>
+                  <Text style={styles.ebayEmptyText}>
+                    {item.usedMin ? 'Looking for completed comps?' : 'Amazon price unavailable?'}
+                  </Text>
+                  <TouchableOpacity style={styles.ebayCheckSoldBtn} onPress={handleOpenEbaySold}>
+                    <Text style={styles.ebayCheckSoldBtnText}>
+                      ⚡ Check Sold Comps on {item.marketplace === 'US' ? 'eBay.com' : 'eBay.ca'} ↗
+                    </Text>
+                    <Text style={styles.ebayCheckSoldSubtext}>
+                      Auto-copies {item.barcode || 'ISBN'} & opens completed sales filter
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
 
@@ -495,12 +581,109 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600'
   },
+  ebayContainer: {
+    backgroundColor: '#171923',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#2D3748'
+  },
+  ebayHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  ebayHeaderTitle: {
+    color: '#ECC94B',
+    fontSize: 14,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  ebayQuickLinkBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: 6
+  },
+  ebayQuickLinkText: {
+    color: '#63B3ED',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  ebayLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 8
+  },
+  ebayLoadingText: {
+    color: '#A0AEC0',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  ebayPriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 4
+  },
+  ebayPriceValue: {
+    color: '#48BB78',
+    fontSize: 22,
+    fontWeight: '900'
+  },
+  ebayPriceSub: {
+    color: '#A0AEC0',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2
+  },
+  ebayActionBtn: {
+    backgroundColor: '#2D3748',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4A5568'
+  },
+  ebayActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  ebayEmptyRow: {
+    paddingTop: 4
+  },
+  ebayEmptyText: {
+    color: '#A0AEC0',
+    fontSize: 12,
+    marginBottom: 8
+  },
+  ebayCheckSoldBtn: {
+    backgroundColor: '#2C5282',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  ebayCheckSoldBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  ebayCheckSoldSubtext: {
+    color: '#BEE3F8',
+    fontSize: 11,
+    marginTop: 3,
+    fontWeight: '500'
+  },
   scanNextButton: {
     backgroundColor: '#3182CE',
     paddingVertical: 16,
     marginHorizontal: 16,
     marginTop: 12,
-    marginBottom: Platform.OS === 'android' ? 38 : 20, // Clean clearance above Android Home button & nav bar
+    marginBottom: Platform.OS === 'android' ? 60 : 24, // High clearance above Android Home button & nav bar
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',

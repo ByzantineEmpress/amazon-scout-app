@@ -8,12 +8,11 @@ const withAndroidQueries = (config) => {
       androidManifest.queries = [];
     }
 
-    // Add query for Amazon Seller app package
-    androidManifest.queries.push({
-      package: [
-        { $: { 'android:name': 'com.amazon.sellermobile.android' } }
-      ]
-    });
+    // Add queries for Amazon Seller and eBay app packages
+    androidManifest.queries.push(
+      { package: [{ $: { 'android:name': 'com.amazon.sellermobile.android' } }] },
+      { package: [{ $: { 'android:name': 'com.ebay.mobile' } }] }
+    );
 
     return config;
   });

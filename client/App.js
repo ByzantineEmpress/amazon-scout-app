@@ -8,7 +8,8 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Platform
+  Platform,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -20,6 +21,7 @@ import ScanResultModal from './src/components/ScanResultModal';
 import SettingsModal from './src/components/SettingsModal';
 import HistoryModal from './src/components/HistoryModal';
 import OfflineQueueModal from './src/components/OfflineQueueModal';
+import ManualEntryModal from './src/components/ManualEntryModal';
 import { checkForUpdate } from './src/services/updateService';
 
 export default function App() {
@@ -34,10 +36,13 @@ export default function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [offlineVisible, setOfflineVisible] = useState(false);
+  const [manualModalVisible, setManualModalVisible] = useState(false);
 
-  // Manual input
-  const [manualInputVisible, setManualInputVisible] = useState(false);
-  const [manualBarcode, setManualBarcode] = useState('');
+  // Camera focus & zoom
+  const [autofocusMode, setAutofocusMode] = useState('on');
+  const [zoom, setZoom] = useState(0);
+  const [focusPoint, setFocusPoint] = useState(null);
+  const focusTimeoutRef = useRef(null);
 
   // Settings & state
   const [settings, setSettings] = useState({
@@ -122,15 +127,35 @@ export default function App() {
     }
   };
 
-  const handleManualLookup = async () => {
-    if (!manualBarcode.trim()) return;
-    setManualInputVisible(false);
+  const triggerFocus = (coords) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {}
+
+    if (coords) {
+      setFocusPoint(coords);
+      if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
+      focusTimeoutRef.current = setTimeout(() => {
+        setFocusPoint(null);
+      }, 1200);
+    }
+
+    // Force refocus cycle in CameraX
+    setAutofocusMode('off');
+    setTimeout(() => {
+      setAutofocusMode('on');
+    }, 60);
+  };
+
+  const handleManualLookup = async (barcodeToLookup) => {
+    const code = (barcodeToLookup || '').trim();
+    if (!code) return;
+    setManualModalVisible(false);
     setLoading(true);
 
     try {
-      const result = await scanBarcode(manualBarcode.trim(), settings.marketplace || 'CA');
+      const result = await scanBarcode(code, settings.marketplace || 'CA');
       setLoading(false);
-      setManualBarcode('');
       setScannedItem(result.data);
       setResultModalVisible(true);
 
@@ -196,6 +221,26 @@ export default function App() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={styles.hudButton}
+            onPress={() => triggerFocus()}
+          >
+            <Text style={styles.hudButtonText}>🎯 Focus</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.hudButton}
+            onPress={() => {
+              if (zoom === 0) setZoom(0.07);
+              else if (zoom === 0.07) setZoom(0.15);
+              else setZoom(0);
+            }}
+          >
+            <Text style={styles.hudButtonText}>
+              {zoom === 0 ? '🔍 1x' : (zoom === 0.07 ? '🔍 1.5x' : '🔍 2x')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.marketPill}
             onPress={() => {
               const next = settings.marketplace === 'CA' ? 'US' : 'CA';
@@ -214,7 +259,7 @@ export default function App() {
               style={styles.offlinePill}
               onPress={() => setOfflineVisible(true)}
             >
-              <Text style={styles.offlinePillText}>📡 Offline: {offlineCount}</Text>
+              <Text style={styles.offlinePillText}>📡 {offlineCount}</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -223,7 +268,7 @@ export default function App() {
               style={styles.hudButton}
               onPress={() => setHistoryVisible(true)}
             >
-              <Text style={styles.hudButtonText}>📜 History</Text>
+              <Text style={styles.hudButtonText}>📜</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -242,6 +287,8 @@ export default function App() {
             style={styles.camera}
             facing="back"
             enableTorch={torch}
+            autofocus={autofocusMode}
+            zoom={zoom}
             barcodeScannerSettings={{
               barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code39', 'code128', 'qr']
             }}
@@ -252,6 +299,29 @@ export default function App() {
             }}
           />
 
+          {/* Touch-to-Focus Transparent Touch Layer */}
+          <TouchableWithoutFeedback
+            onPress={(e) => {
+              const { locationX, locationY } = e.nativeEvent;
+              triggerFocus({ x: locationX, y: locationY });
+            }}
+          >
+            <View style={StyleSheet.absoluteFillObject} />
+          </TouchableWithoutFeedback>
+
+          {/* Visual Focus Ring Indicator */}
+          {focusPoint ? (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.focusRing,
+                { left: focusPoint.x - 32, top: focusPoint.y - 32 }
+              ]}
+            >
+              <View style={styles.focusCenterDot} />
+            </View>
+          ) : null}
+
           {/* Laser Scanner Reticle Overlay */}
           <View style={styles.reticleOverlay} pointerEvents="none">
             <View style={styles.reticleBox}>
@@ -261,7 +331,7 @@ export default function App() {
               <View style={[styles.corner, styles.bottomRight]} />
               <View style={styles.laserLine} />
             </View>
-            <Text style={styles.reticleHint}>Align barcode / ISBN within the frame</Text>
+            <Text style={styles.reticleHint}>Align barcode / ISBN • Tap screen to focus</Text>
           </View>
 
           {loading ? (
@@ -274,30 +344,20 @@ export default function App() {
 
         {/* Bottom Controls Bar */}
         <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={styles.manualEntryBtn}
-          onPress={() => setManualInputVisible(!manualInputVisible)}
-        >
-          <Text style={styles.manualEntryBtnText}>⌨️ Type Barcode / ISBN</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.manualEntryBtn}
+            onPress={() => setManualModalVisible(true)}
+          >
+            <Text style={styles.manualEntryBtnText}>⌨️ Type Barcode / ISBN</Text>
+          </TouchableOpacity>
+        </View>
 
-        {manualInputVisible ? (
-          <View style={styles.manualInputRow}>
-            <TextInput
-              style={styles.manualTextInput}
-              placeholder="e.g. 9780132350884"
-              placeholderTextColor="#718096"
-              keyboardType="numeric"
-              value={manualBarcode}
-              onChangeText={setManualBarcode}
-              autoFocus
-            />
-            <TouchableOpacity style={styles.manualSubmitBtn} onPress={handleManualLookup}>
-              <Text style={styles.manualSubmitBtnText}>Look Up</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      </View>
+        {/* Manual Barcode Entry Modal */}
+        <ManualEntryModal
+          visible={manualModalVisible}
+          onClose={() => setManualModalVisible(false)}
+          onSubmit={handleManualLookup}
+        />
 
       {/* Result Modal */}
       <ScanResultModal
@@ -535,47 +595,40 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600'
   },
+  focusRing: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderWidth: 2,
+    borderColor: '#ECC94B',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10
+  },
+  focusCenterDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ECC94B'
+  },
   bottomBar: {
     backgroundColor: '#1A202C',
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: Platform.OS === 'android' ? 36 : 18
+    paddingBottom: Platform.OS === 'android' ? 60 : 24 // Elevated clearance above Android home button
   },
   manualEntryBtn: {
     backgroundColor: '#2D3748',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center'
-  },
-  manualEntryBtnText: {
-    color: '#E2E8F0',
-    fontSize: 14,
-    fontWeight: '700'
-  },
-  manualInputRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12
-  },
-  manualTextInput: {
-    flex: 1,
-    backgroundColor: '#000000',
-    color: '#FFFFFF',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#4A5568'
   },
-  manualSubmitBtn: {
-    backgroundColor: '#3182CE',
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-    borderRadius: 8
-  },
-  manualSubmitBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '800'
+  manualEntryBtnText: {
+    color: '#E2E8F0',
+    fontSize: 15,
+    fontWeight: '700'
   }
 });
