@@ -71,7 +71,7 @@ Use EAS to build, sign, and submit in the cloud (`eas build`, `eas submit`) and 
 
 `eas.json` defines `development` (dev client), `preview` (internal distribution, Android APK), and `production`. The npm scripts `build:android` / `build:ios` both use the `preview` profile.
 
-Android APKs for end users are produced by `.github/workflows/release-apk.yml` on a `v*` tag push: it runs `expo prebuild`, signs with the release keystore from repository secrets, verifies the APK's certificate, and publishes to GitHub Releases. Version bumps for a release go in `app.json` (`expo.version`) and `package.json`.
+Android APKs for end users are produced by `.github/workflows/release-apk.yml` on a `v*` tag push: it runs `expo prebuild`, signs with the release keystore from repository secrets, verifies the APK's certificate, and publishes to GitHub Releases. Version bumps for a release go in `app.json` (`expo.version`) and `package.json`. To exercise the whole signing path without publishing anything, dispatch that workflow manually with the **dry_run** input enabled — it builds, signs and verifies, then stops before the release step.
 
 **Never let a release be signed with `debug.keystore`.** The Expo Android template signs the release buildType with the debug keystore by default; that key is public, so anyone could forge an APK that Android accepts as an update to this app. `plugins/withReleaseSigning.js` repoints it at a real keystore (credentials come from Gradle properties, never committed), and both `test/releaseSigning.test.mjs` and a workflow step fail loudly if it ever regresses.
 
