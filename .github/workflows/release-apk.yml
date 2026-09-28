@@ -10,6 +10,11 @@ on:
         description: 'Release Tag (e.g. v1.0.0)'
         required: false
         default: 'v1.0.0'
+      dry_run:
+        description: 'Build, sign and verify only — do not publish a release'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -88,11 +93,17 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          # Secrets must not carry a trailing newline into a password. Guard here as
+          # well as at the point of use: a corrupted password fails opaquely in Gradle.
+          STORE_PASSWORD="$(printf '%s' "$STORE_PASSWORD" | tr -d '\r\n')"
+          KEY_ALIAS="$(printf '%s' "$KEY_ALIAS" | tr -d '\r\n')"
+          KEY_PASSWORD="$(printf '%s' "$KEY_PASSWORD" | tr -d '\r\n')"
+
           mkdir -p ~/.gradle
           # Deliberately outside the repository: these values are read by
           # client/plugins/withReleaseSigning.js and must never be committed.
           cat >> ~/.gradle/gradle.properties <<EOF
-          AMAZONSCOUT_STORE_FILE=release.keystore
+          AMAZONSCOUT_STORE_FILE=release.p12
           AMAZONSCOUT_KEY_ALIAS=$KEY_ALIAS
           AMAZONSCOUT_STORE_PASSWORD=$STORE_PASSWORD
           AMAZONSCOUT_KEY_PASSWORD=$KEY_PASSWORD
@@ -110,15 +121,18 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           # Must happen after prebuild, which recreates android/ from scratch.
-          printf '%s' "$KEYSTORE_B64" | base64 -d > client/android/app/release.keystore
+          STORE_PASSWORD="$(printf '%s' "$STORE_PASSWORD" | tr -d '\r\n')"
 
-          if [ ! -s client/android/app/release.keystore ]; then
+          printf '%s' "$KEYSTORE_B64" | base64 -d > client/android/app/release.p12
+
+          if [ ! -s client/android/app/release.p12 ]; then
             echo "::error::Decoded keystore is empty — is ANDROID_KEYSTORE_BASE64 valid base64?"
             exit 1
           fi
 
-          keytool -list -keystore client/android/app/release.keystore -storepass "$STORE_PASSWORD" >/dev/null || {
-            echo "::error::Could not open the keystore with ANDROID_KEYSTORE_PASSWORD."
+          # Fails the run before the build if the secrets do not match the keystore.
+          keytool -list -storetype PKCS12 -keystore client/android/app/release.p12 -storepass "$STORE_PASSWORD" >/dev/null || {
+            echo "::error::Could not open the PKCS#12 keystore with ANDROID_KEYSTORE_PASSWORD."
             exit 1
           }
           echo "Keystore restored and its password verified."
@@ -160,7 +174,7 @@ jobs:
           echo "$CERTS"
 
           if echo "$CERTS" | grep -qi 'Android Debug'; then
-            echo "::warning::This APK is signed with the public Android debug keystore."
+            echo "::error::This APK is signed with the public Android debug keystore. Refusing to publish."
             exit 1
           fi
 
@@ -174,6 +188,7 @@ jobs:
           path: ${{ steps.prepare_artifact.outputs.apk_path }}
 
       - name: 🚀 Publish to GitHub Releases
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.2.2
         with:
           tag_name: ${{ steps.get_version.outputs.tag }}

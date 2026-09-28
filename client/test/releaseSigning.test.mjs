@@ -118,6 +118,11 @@ test('signing credentials come from gradle properties, never hardcoded', () => {
   }
 });
 
+test('the keystore type is explicit so Gradle cannot guess from the file name', () => {
+  // The release keystore is PKCS#12; leaving storeType unset lets Gradle probe it as JKS.
+  assertContains(applyReleaseSigning(TEMPLATE), 'storeType "PKCS12"', 'storeType');
+});
+
 test('the release keystore is only read when the properties exist', () => {
   // Otherwise every debug build on a machine without signing properties fails at
   // Gradle configuration time.

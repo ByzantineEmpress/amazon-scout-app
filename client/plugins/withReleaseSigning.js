@@ -21,6 +21,10 @@ const { withAppBuildGradle } = require('@expo/config-plugins');
  *     AMAZONSCOUT_STORE_FILE / AMAZONSCOUT_STORE_PASSWORD
  *     AMAZONSCOUT_KEY_ALIAS  / AMAZONSCOUT_KEY_PASSWORD
  *
+ * The keystore is PKCS#12. That has been keytool's own default output format since
+ * Java 9, and `storeType` is set explicitly so Gradle never has to guess from the
+ * file name.
+ *
  * The `if (project.hasProperty(...))` guard keeps debug builds working on machines
  * that have no signing properties configured. A release build without them produces
  * an unsigned APK, so CI fails early if the secrets are missing, and the workflow
@@ -30,6 +34,7 @@ const { withAppBuildGradle } = require('@expo/config-plugins');
 const RELEASE_SIGNING_BLOCK = `        release {
             if (project.hasProperty("AMAZONSCOUT_STORE_FILE")) {
                 storeFile file(AMAZONSCOUT_STORE_FILE)
+                storeType "PKCS12"
                 storePassword AMAZONSCOUT_STORE_PASSWORD
                 keyAlias AMAZONSCOUT_KEY_ALIAS
                 keyPassword AMAZONSCOUT_KEY_PASSWORD

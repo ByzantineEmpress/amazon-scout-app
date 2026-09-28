@@ -154,42 +154,60 @@ GitHub Actions will build the APK in the cloud, sign it with your release keysto
 
 ---
 
-#### ⚠️ One-time setup: release signing secrets
+#### ⚠️ Release signing
 
 Every APK must be signed with the **same private key**, or Android refuses to install it as an update over an existing copy. This build deliberately fails rather than falling back to a throwaway key or to the public **Android debug keystore** — either would let a stranger publish an APK that your phone accepts as a genuine Amazon Scout update.
 
-**1. Create a release keystore** (once, on your own machine — never commit it, and back it up):
-```bash
-keytool -genkeypair -v \
-  -keystore amazonscout-release.keystore \
-  -alias amazonscout \
-  -keyalg RSA -keysize 2048 -validity 10000 \
-  -dname "CN=AmazonScout, O=AmazonScout, L=Toronto, ST=ON, C=CA"
-```
-Pick a strong password when prompted. **If you lose this file you can never update the app again** — you would have to publish a new package name.
+**The keystore exists and the four secrets are configured on this repository:**
 
-**2. Base64-encode it on a single line:**
-```bash
-# macOS / Linux
-base64 -i amazonscout-release.keystore -o keystore.b64
-```
-```powershell
-# Windows PowerShell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("amazonscout-release.keystore")) | Set-Content keystore.b64
-```
+| | |
+| --- | --- |
+| Keystore | `Documents\amazonscout-signing\amazonscout-release.p12` |
+| Password file | `Documents\amazonscout-signing\keystore-password.txt` |
+| Alias | `amazonscout` |
+| Certificate SHA-256 | `4F:F8:44:AB:8A:E3:2E:13:E0:D1:68:38:FD:73:41:C9:32:49:74:4E:03:80:3A:37:61:1E:4A:91:11:B1:2A:99` |
 
-**3. Add four secrets** at *Settings → Secrets and variables → Actions → New repository secret*:
+> 🔐 **Back it up, then delete the working copies.** Move `amazonscout-release.p12` and `keystore-password.txt` into a password manager or onto an offline drive. **If the keystore is lost you can never update this app again** — you would have to publish under a new package name. It must never be committed: `.gitignore` covers `*.keystore`, `*.jks`, `*.p12`, `*.key` and `*.b64`.
+
+Secrets live at *Settings → Secrets and variables → Actions*:
 
 | Secret | Value |
 | --- | --- |
-| `ANDROID_KEYSTORE_BASE64` | the single-line contents of `keystore.b64` |
-| `ANDROID_KEYSTORE_PASSWORD` | the keystore password you chose |
+| `ANDROID_KEYSTORE_BASE64` | the keystore, base64-encoded on a single line |
+| `ANDROID_KEYSTORE_PASSWORD` | the keystore password |
 | `ANDROID_KEY_ALIAS` | `amazonscout` |
-| `ANDROID_KEY_PASSWORD` | the key password (same as the keystore password unless you set a different one) |
+| `ANDROID_KEY_PASSWORD` | the key password (same as the keystore password) |
 
-**4. Delete `keystore.b64`** (and any other stray copy) once the secrets are saved, keeping one offline backup of the `.keystore` file itself.
+The workflow restores the keystore, and **fails the release if the finished APK is ever debug-signed**, so this cannot silently regress.
 
-The workflow then verifies the finished APK's signing certificate and **fails the release if it is ever debug-signed**, so this cannot silently regress.
+<details>
+<summary>Recreating the keystore from scratch</summary>
+
+It is a standard PKCS#12 store — the same container `keytool` has produced by default since Java 9 — so either tool works. With OpenSSL (no JDK needed), the alias comes from `-name`:
+
+```bash
+openssl req -x509 -newkey rsa:2048 -sha256 -days 10000 -nodes \
+  -keyout key.pem -out cert.pem \
+  -subj "/CN=AmazonScout, O=AmazonScout, L=Toronto, ST=ON, C=CA" \
+  -addext "basicConstraints=critical,CA:FALSE" \
+  -addext "keyUsage=critical,digitalSignature"
+openssl pkcs12 -export -out amazonscout-release.p12 \
+  -inkey key.pem -in cert.pem -name amazonscout
+```
+
+With a JDK installed, the equivalent is:
+
+```bash
+keytool -genkeypair -v -keystore amazonscout-release.p12 -storetype PKCS12 \
+  -alias amazonscout -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=AmazonScout, O=AmazonScout, L=Toronto, ST=ON, C=CA"
+```
+
+Then base64 the `.p12` onto one line and update `ANDROID_KEYSTORE_BASE64` and the passwords.
+
+</details>
+
+**Validating signing without publishing:** run the *Build & Release Android APK* workflow manually with **dry_run** enabled. It generates the native project, restores the keystore, builds and signs the APK, and checks the certificate — but skips the release, so you can prove the pipeline works before cutting a real version.
 
 > **Upgrading from an older release:** APKs published before this change were signed with the public Android debug keystore. The first release signed with your new key has a different signature, so Android will refuse to install it over an existing copy. Uninstall the old app once and install the new APK; in-app updates work normally from then on.
 

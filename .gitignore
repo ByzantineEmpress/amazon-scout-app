@@ -14,6 +14,14 @@ dist/
 android/
 ios/
 
+# Signing material — private keys must never be committed
+*.keystore
+*.jks
+*.p12
+*.p8
+*.key
+*.b64
+
 # Environment
 .env
 .env.local
