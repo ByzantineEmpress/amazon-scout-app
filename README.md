@@ -28,27 +28,64 @@ A lightweight, lightning-fast mobile application (**iOS & Android**) built speci
 
 ---
 
+## 🔌 How It Gets Amazon Data (No API Keys, No Backend)
+
+Amazon Scout does **not** integrate with any official Amazon API. There is no Product Advertising API, no Selling Partner API (SP-API), no affiliate tag, and no Amazon account credentials stored anywhere in the app. Instead, the phone reads Amazon search result pages directly and extracts the details it needs:
+
+| Source | What it provides | Key required? |
+| --- | --- | --- |
+| `amazon.ca` / `amazon.com` search results | Title, ASIN, Buy Box, lowest used price | No |
+| OpenLibrary | Title, author, publisher, year (books) | No |
+| iTunes Search API | Title/author confirmation (ebooks) | No |
+| UPCitemdb (trial) | Title & brand (DVDs, Blu-rays, games) | No |
+| AbeBooks (Amazon-owned) | Used-book market price | No |
+| eBay Sold/Completed | Comps — opened in the eBay app or browser | No |
+
+For physical books the ISBN-13 is converted to its ISBN-10, because the ISBN-10 *is* the ASIN — so the app can look up the exact product instead of guessing from a keyword search. If Amazon.ca has no used price, it retries Amazon.com and estimates the CAD equivalent.
+
+**One thing to understand about the restriction badges:** they are computed **locally** from the built-in publisher/studio/brand rules, ISBN-prefix tables, and the DVD MSRP threshold. The app never asks Amazon whether *your* account is gated. Real gating is specific to your account, the category, and the item's condition, so treat a 🔴 badge as a strong advisory warning, not a verdict — and always confirm with the **1-Tap Seller Central** button before buying.
+
+Because this reads Amazon's pages rather than an API, it can break if Amazon changes its markup or serves a CAPTCHA. When that happens the app silently falls back to the other sources, so you may see a title without a price rather than an error.
+
+---
+
 ## 📁 Repository Structure
 
+There is **no `server/` directory and no backend of any kind** — every line of logic that runs ships inside the mobile app.
+
 ```text
-├── package.json               # Root scripts (npm start launches mobile app)
+├── package.json               # Root scripts (npm start launches mobile app, npm test runs unit tests)
 ├── .gitignore                 # Excludes node_modules, temp files, and credentials
 ├── README.md                  # Complete documentation
 │
+├── .github/workflows/
+│   └── release-apk.yml        # Builds, signs & publishes the Android APK on a v* tag
+│
 └── client/                    # Cross-Platform Mobile App (iOS & Android)
-    ├── App.js                 # Live camera viewfinder, targeting reticle, and main UI
+    ├── index.js               # Entry point (registerRootComponent)
+    ├── App.js                 # Live camera viewfinder, scan loop, and modal state
     ├── app.json               # Expo configuration with camera permissions
+    ├── eas.json               # EAS build profiles (development / preview / production)
     ├── package.json           # React Native / Expo dependencies
+    ├── plugins/
+    │   ├── withAndroidQueries.js  # Lets the app open the Amazon Seller & eBay Android apps
+    │   └── withReleaseSigning.js  # Signs release builds with a real keystore, not the debug key
+    ├── test/
+    │   ├── gatingRules.test.mjs       # Unit tests for the gating engine
+    │   └── releaseSigning.test.mjs    # Guards the release signing config (npm test)
     └── src/
         ├── services/
         │   ├── barcodeService.js    # On-device barcode & ISBN resolver (Serverless)
         │   ├── gatingRules.js       # On-device database of gated publishers & studios
         │   ├── api.js               # Clean service interface with auto-offline queueing
-        │   └── storage.js           # AsyncStorage for scan history, settings, and queue
+        │   ├── storage.js           # AsyncStorage for scan history, settings, and queue
+        │   ├── ebayService.js       # 1-tap eBay Sold/Completed comps lookup
+        │   └── updateService.js     # In-app GitHub Releases update checker
         └── components/
             ├── ScanResultModal.js   # High-contrast Green/Red restriction card
             ├── SettingsModal.js     # Haptic/audio toggles and local storage manager
             ├── HistoryModal.js      # Filterable scan log with timestamps
+            ├── ManualEntryModal.js  # Type an ISBN/UPC when a barcode won't scan
             └── OfflineQueueModal.js # Batch queue management and 1-tap sync
 ```
 
