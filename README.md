@@ -113,7 +113,48 @@ Whenever you want to release an update:
 git tag v1.0.1
 git push origin v1.0.1
 ```
-GitHub Actions will automatically build the APK in the cloud, sign it, and publish the new release!
+GitHub Actions will build the APK in the cloud, sign it with your release keystore, and publish the new release.
+
+---
+
+#### ⚠️ One-time setup: release signing secrets
+
+Every APK must be signed with the **same private key**, or Android refuses to install it as an update over an existing copy. This build deliberately fails rather than falling back to a throwaway key or to the public **Android debug keystore** — either would let a stranger publish an APK that your phone accepts as a genuine Amazon Scout update.
+
+**1. Create a release keystore** (once, on your own machine — never commit it, and back it up):
+```bash
+keytool -genkeypair -v \
+  -keystore amazonscout-release.keystore \
+  -alias amazonscout \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=AmazonScout, O=AmazonScout, L=Toronto, ST=ON, C=CA"
+```
+Pick a strong password when prompted. **If you lose this file you can never update the app again** — you would have to publish a new package name.
+
+**2. Base64-encode it on a single line:**
+```bash
+# macOS / Linux
+base64 -i amazonscout-release.keystore -o keystore.b64
+```
+```powershell
+# Windows PowerShell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("amazonscout-release.keystore")) | Set-Content keystore.b64
+```
+
+**3. Add four secrets** at *Settings → Secrets and variables → Actions → New repository secret*:
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | the single-line contents of `keystore.b64` |
+| `ANDROID_KEYSTORE_PASSWORD` | the keystore password you chose |
+| `ANDROID_KEY_ALIAS` | `amazonscout` |
+| `ANDROID_KEY_PASSWORD` | the key password (same as the keystore password unless you set a different one) |
+
+**4. Delete `keystore.b64`** (and any other stray copy) once the secrets are saved, keeping one offline backup of the `.keystore` file itself.
+
+The workflow then verifies the finished APK's signing certificate and **fails the release if it is ever debug-signed**, so this cannot silently regress.
+
+> **Upgrading from an older release:** APKs published before this change were signed with the public Android debug keystore. The first release signed with your new key has a different signature, so Android will refuse to install it over an existing copy. Uninstall the old app once and install the new APK; in-app updates work normally from then on.
 
 ---
 
@@ -145,14 +186,21 @@ Unlike Android, Apple restricts direct APK-style sideloading. Here are the three
 
 ## 🐙 How to Push to GitHub
 
-You can either have the AI assistant push directly using a GitHub Token, or push manually in 1 minute:
+### Option A: Git Credential Manager (Recommended)
 
-### Option A: Let the AI Push for You
-1. Create a GitHub Personal Access Token:
-   - Go to [github.com/settings/tokens](https://github.com/settings/tokens).
-   - Generate a **Classic Token** with the `repo` scope selected.
-2. Create an empty repository at [github.com/new](https://github.com/new) named `amazon-scout-app`.
-3. Provide your token and GitHub username in the chat, and the AI will execute the push directly!
+Never paste a token into a chat, a source file, or a repository URL. A token placed in a remote URL is written to `.git/config` in plaintext, and leaks the moment that folder is copied, zipped, or shared. GitHub's secret scanning also revokes tokens it finds in pushes.
+
+1. Create a GitHub Personal Access Token at [github.com/settings/tokens](https://github.com/settings/tokens) — a **Classic Token** with the `repo` scope.
+2. Push once and let Git Credential Manager store it in the Windows Credential Manager:
+   ```bash
+   git push origin main
+   ```
+   Enter the token as the password when prompted. It is then cached by the OS, and no secret lives in the project.
+3. If a token was ever embedded in the remote URL, strip it and switch to the credential helper:
+   ```bash
+   git remote set-url origin https://github.com/ByzantineEmpress/amazon-scout-app.git
+   ```
+   Then **revoke that token** at [github.com/settings/tokens](https://github.com/settings/tokens) and generate a new one.
 
 ### Option B: Push Manually via Terminal
 In your terminal, run:

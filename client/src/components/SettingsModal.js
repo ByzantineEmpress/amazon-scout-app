@@ -8,8 +8,7 @@ import {
   Switch,
   ScrollView,
   Alert,
-  ActivityIndicator,
-  TextInput
+  ActivityIndicator
 } from 'react-native';
 import { getSettings, saveSettings, clearScanHistory, clearOfflineQueue } from '../services/storage';
 import { checkForUpdate, openUpdateDownload, CURRENT_VERSION } from '../services/updateService';
@@ -20,8 +19,6 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState(null);
-  const [githubToken, setGithubToken] = useState('');
-  const [showTokenInput, setShowTokenInput] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -64,15 +61,13 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
     setMarketplace(s.marketplace || 'CA');
     setSoundEnabled(s.soundEnabled !== false);
     setVibrationEnabled(s.vibrationEnabled !== false);
-    setGithubToken(s.githubToken || '');
   };
 
   const handleSave = async () => {
     const updated = {
       marketplace,
       soundEnabled,
-      vibrationEnabled,
-      githubToken: (githubToken || '').trim()
+      vibrationEnabled
     };
     await saveSettings(updated);
     if (onSettingsUpdated) onSettingsUpdated(updated);
@@ -196,34 +191,6 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
                   </TouchableOpacity>
                 </View>
               )}
-
-              {/* Private Repo Token Toggle */}
-              <TouchableOpacity
-                style={styles.tokenToggleBtn}
-                onPress={() => setShowTokenInput(!showTokenInput)}
-              >
-                <Text style={styles.tokenToggleText}>
-                  {showTokenInput ? '▲ Hide Private Token' : '🔑 Configure GitHub Token (for Private Repos)'}
-                </Text>
-              </TouchableOpacity>
-
-              {showTokenInput ? (
-                <View style={styles.tokenContainer}>
-                  <Text style={styles.tokenHint}>
-                    Required only if your GitHub repo is set to Private.
-                  </Text>
-                  <TextInput
-                    style={styles.tokenInput}
-                    placeholder="Paste ghp_xxxx Personal Token..."
-                    placeholderTextColor="#718096"
-                    value={githubToken}
-                    onChangeText={setGithubToken}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry
-                  />
-                </View>
-              ) : null}
             </View>
 
             {/* Data Management */}
@@ -448,37 +415,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 13
-  },
-  tokenToggleBtn: {
-    marginTop: 10,
-    paddingVertical: 4
-  },
-  tokenToggleText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    textDecorationLine: 'underline'
-  },
-  tokenContainer: {
-    marginTop: 8,
-    padding: 10,
-    backgroundColor: '#1E293B',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#334155'
-  },
-  tokenHint: {
-    color: '#94A3B8',
-    fontSize: 11,
-    marginBottom: 6
-  },
-  tokenInput: {
-    backgroundColor: '#0F172A',
-    color: '#F8FAFC',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 12,
-    borderWidth: 1,
-    borderColor: '#475569'
   }
 });

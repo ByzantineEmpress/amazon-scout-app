@@ -10,8 +10,7 @@ const DEFAULT_SETTINGS = {
   marketplace: 'CA', // Default to Amazon Canada (Amazon.ca)
   soundEnabled: true,
   vibrationEnabled: true,
-  scanCooldownMs: 1500,
-  githubToken: ''
+  scanCooldownMs: 1500
 };
 
 export async function getSettings() {

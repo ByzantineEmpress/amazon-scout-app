@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { Linking, Platform } from 'react-native';
 import appConfig from '../../app.json';
-import { getSettings } from './storage';
 
 export const CURRENT_VERSION = appConfig.expo?.version || '1.0.0';
 const GITHUB_REPO = 'ByzantineEmpress/amazon-scout-app';
@@ -31,20 +30,17 @@ export function compareVersions(v1, v2) {
 
 /**
  * Checks GitHub Releases for a newer version of the app.
+ * The repository is public, so this uses the unauthenticated GitHub API and stores
+ * no credentials on the device.
  */
 export async function checkForUpdate() {
   try {
-    const settings = await getSettings().catch(() => ({}));
     const headers = {
       'Accept': 'application/vnd.github.v3+json',
       'User-Agent': `AmazonScout/${CURRENT_VERSION}`,
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache'
     };
-
-    if (settings?.githubToken) {
-      headers['Authorization'] = `token ${settings.githubToken.trim()}`;
-    }
 
     const response = await axios.get(`${GITHUB_LATEST_RELEASE_API}?_t=${Date.now()}`, {
       headers,

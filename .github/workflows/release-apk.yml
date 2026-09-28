@@ -51,43 +51,77 @@ jobs:
         with:
           node-version: 20
 
+      - name: 🔐 Verify signing secrets are configured
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$KEYSTORE_B64" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -z "$STORE_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -z "$KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
+          [ -z "$KEY_PASSWORD" ] && missing="$missing ANDROID_KEY_PASSWORD"
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required repository secret(s):$missing"
+            echo ""
+            echo "This workflow will not fall back to generating a throwaway keystore or to the"
+            echo "public Android debug keystore. Either would let anyone publish an APK that"
+            echo "Android accepts as an update to Amazon Scout."
+            echo ""
+            echo "See the 'Release signing secrets' section of README.md for the one-time setup."
+            exit 1
+          fi
+
+          echo "All four signing secrets are present."
+
       - name: 📦 Install Client Dependencies
         run: |
           cd client
           npm install
+
+      - name: ⚙️ Write signing properties for Gradle
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          mkdir -p ~/.gradle
+          # Deliberately outside the repository: these values are read by
+          # client/plugins/withReleaseSigning.js and must never be committed.
+          cat >> ~/.gradle/gradle.properties <<EOF
+          AMAZONSCOUT_STORE_FILE=release.keystore
+          AMAZONSCOUT_KEY_ALIAS=$KEY_ALIAS
+          AMAZONSCOUT_STORE_PASSWORD=$STORE_PASSWORD
+          AMAZONSCOUT_KEY_PASSWORD=$KEY_PASSWORD
+          EOF
+          echo "Wrote signing properties to ~/.gradle/gradle.properties"
 
       - name: ⚙️ Generate Native Android Project (Expo Prebuild)
         run: |
           cd client
           npx expo prebuild --platform android --clean
 
-      - name: 🔑 Configure Release Keystore & Gradle Signing
+      - name: 🔑 Restore the release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          cd client/android/app
-          # Generate signing keystore
-          keytool -genkeypair -v \
-            -keystore release.keystore \
-            -alias amazonscout \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass scoutpass123 \
-            -keypass scoutpass123 \
-            -dname "CN=AmazonScout, OU=Mobile, O=AmazonScout, L=Toronto, ST=ON, C=CA"
+          # Must happen after prebuild, which recreates android/ from scratch.
+          printf '%s' "$KEYSTORE_B64" | base64 -d > client/android/app/release.keystore
 
-          # Update build.gradle to ensure release signing is applied
-          node -e '
-            const fs = require("fs");
-            let bg = fs.readFileSync("build.gradle", "utf8");
-            
-            // Insert signingConfig if missing or set release signing
-            if (!bg.includes("signingConfigs.release")) {
-              bg = bg.replace(/signingConfigs\s*\{/, `signingConfigs {\n        release {\n            storeFile file("release.keystore")\n            storePassword "scoutpass123"\n            keyAlias "amazonscout"\n            keyPassword "scoutpass123"\n        }`);
-              bg = bg.replace(/buildTypes\s*\{\s*release\s*\{/, `buildTypes {\n        release {\n            signingConfig signingConfigs.release`);
-              fs.writeFileSync("build.gradle", bg);
-              console.log("Configured release signingConfig in build.gradle");
-            }
-          '
+          if [ ! -s client/android/app/release.keystore ]; then
+            echo "::error::Decoded keystore is empty — is ANDROID_KEYSTORE_BASE64 valid base64?"
+            exit 1
+          fi
+
+          keytool -list -keystore client/android/app/release.keystore -storepass "$STORE_PASSWORD" >/dev/null || {
+            echo "::error::Could not open the keystore with ANDROID_KEYSTORE_PASSWORD."
+            exit 1
+          }
+          echo "Keystore restored and its password verified."
 
       - name: 🔨 Build Android Release APK
         run: |
@@ -110,6 +144,28 @@ jobs:
           echo "apk_path=$APK_DIR/$TARGET_NAME" >> $GITHUB_OUTPUT
           echo "apk_name=$TARGET_NAME" >> $GITHUB_OUTPUT
           ls -la "$APK_DIR"
+
+      - name: 🔎 Verify the APK is not debug-signed
+        run: |
+          APK="${{ steps.prepare_artifact.outputs.apk_path }}"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -n 1)"
+
+          if [ -n "$APKSIGNER" ]; then
+            CERTS="$("$APKSIGNER" verify --print-certs "$APK")"
+          else
+            echo "::warning::apksigner not found; falling back to keytool"
+            CERTS="$(keytool -printcert -jarfile "$APK")"
+          fi
+          echo "$CERTS"
+
+          if echo "$CERTS" | grep -qi 'Android Debug'; then
+            echo "::warning::This APK is signed with the public Android debug keystore."
+            exit 1
+          fi
+
+          echo "$CERTS" | grep -iE 'certificate SHA-256|SHA256:' | head -n 2 || true
+          echo "✅ Signed with a non-debug certificate."
 
       - name: 💾 Upload Artifact (Backup)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
