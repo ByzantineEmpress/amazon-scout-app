@@ -145,12 +145,16 @@ Once installed, you never need to manually check GitHub again:
 - The app checks GitHub Releases for new versions, shows what changed, and lets you install the update with 1 tap!
 
 #### Method 2: Triggering a New APK Build
-Whenever you want to release an update:
+
+1. **Bump the version** in `client/app.json` (`expo.version`) and `client/package.json` (`version`). The workflow fails the release if the tag and `app.json` disagree, because the in-app updater compares those two values.
+2. **Write the release notes** in `release-notes/v<version>.md`. These are displayed inside the app on its *"update available"* card, so write them for a user — see [release-notes/README.md](release-notes/README.md). The build fails early if this file is missing.
+3. **Commit and push.**
+4. **Tag and push the tag:**
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.9
+git push origin v1.0.9
 ```
-GitHub Actions will build the APK in the cloud, sign it with your release keystore, and publish the new release.
+GitHub Actions then builds the APK, signs it with your release keystore, verifies its certificate, and publishes the release.
 
 ---
 

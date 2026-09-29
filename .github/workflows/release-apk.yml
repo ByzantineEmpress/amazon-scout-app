@@ -75,6 +75,36 @@ jobs:
           fi
           echo "Tag $TAG matches client/app.json version $APP_VERSION."
 
+      - name: 📝 Resolve release notes
+        id: notes
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.get_version.outputs.tag }}
+        run: |
+          NOTES="release-notes/${TAG}.md"
+
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::No release notes found for $TAG (expected $NOTES)."
+            echo ""
+            echo "Create that file before tagging. The app shows the first three lines of the"
+            echo "release body in its 'update available' card, so write it for a user rather"
+            echo "than as a changelog. See release-notes/README.md."
+            exit 1
+          fi
+
+          # The shared install instructions are appended so every release carries them
+          # without each notes file having to repeat them.
+          BODY="${RUNNER_TEMP:-/tmp}/release-body.md"
+          cat "$NOTES" > "$BODY"
+          FOOTER="release-notes/_install-instructions.md"
+          if [ -f "$FOOTER" ]; then
+            printf '\n\n---\n\n' >> "$BODY"
+            cat "$FOOTER" >> "$BODY"
+          fi
+
+          echo "notes_file=$BODY" >> "$GITHUB_OUTPUT"
+          echo "Using release notes from $NOTES"
+
       - name: 🔐 Verify signing secrets are configured
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -212,20 +242,7 @@ jobs:
         with:
           tag_name: ${{ steps.get_version.outputs.tag }}
           name: Amazon Scout ${{ steps.get_version.outputs.tag }}
-          body: |
-            ## ⚡ Amazon Scout ${{ steps.get_version.outputs.tag }} — Standalone Release
-
-            ### 🌟 Features:
-            - **100% Serverless & On-Device**: Lightning-fast barcode & ISBN recognition powered by Google ML Kit.
-            - **Canadian Amazon (`Amazon.ca`) Optimized**: Canadian Dollar (`CDN$`) pricing and Canadian publisher/media gating warnings (*Nelson Education, McGraw-Hill Ryerson, eOne Canada, Pearson, Disney*).
-            - **In-App Update Checker**: Tap **⚙️ Settings → Check for Updates** anytime to install future releases.
-            - **Offline Queue**: Keep scanning in zero-service thrift store basements and sync later.
-
-            ### 📲 How to Install on Android:
-            1. Download the **`${{ steps.prepare_artifact.outputs.apk_name }}`** asset attached below directly on your Android phone.
-            2. Open the downloaded file to install.
-            3. If prompted, allow *"Install unknown apps"* for your browser.
-            4. **Done!** The app icon is now on your home screen.
+          body_path: ${{ steps.notes.outputs.notes_file }}
           files: |
             ${{ steps.prepare_artifact.outputs.apk_path }}
           draft: false
