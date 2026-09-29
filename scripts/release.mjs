@@ -88,9 +88,24 @@ function preflight() {
     die(`Refusing to release from branch "${branch}". Switch to main first.`);
   }
 
-  const dirty = git(['status', '--porcelain']);
-  if (dirty) {
-    die(`Working tree is not clean:\n\n${dirty}\n\nCommit or stash first — a release tag is hard to walk back.`);
+  // Allow a resume: changes limited to the files this script owns are exactly what a
+  // half-finished run leaves behind (e.g. the editor was closed without saving). Anything
+  // else is unrelated work that must not be swept into a release tag.
+  const dirty = git(['status', '--porcelain'])
+    .split('\n')
+    .map((line) => line.slice(3).trim())
+    .filter(Boolean);
+
+  const owned = new Set([rel(APP_JSON), rel(CLIENT_PKG), rel(notesPath)]);
+  const foreign = dirty.filter((file) => !owned.has(file));
+  if (foreign.length > 0) {
+    die(
+      `Working tree is not clean:\n\n${foreign.join('\n')}\n\n` +
+        `Commit or stash first — a release tag is hard to walk back.`
+    );
+  }
+  if (dirty.length > 0) {
+    console.log(`  resuming: ${dirty.join(', ')} already staged for this release`);
   }
 
   if (gitQuiet(['rev-parse', '--verify', `refs/tags/v${version}`]).ok) {
