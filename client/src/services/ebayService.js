@@ -4,6 +4,14 @@ import * as IntentLauncher from 'expo-intent-launcher';
 import * as Clipboard from 'expo-clipboard';
 
 /**
+ * Mobile Chrome user agent, shared by the sold-comps scraper and the in-app WebView so eBay
+ * serves the mobile layout rather than the desktop one. Note the absence of the "; wv" marker
+ * that identifies an embedded WebView, which some sites treat as a bot.
+ */
+export const EBAY_MOBILE_USER_AGENT =
+  'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
+
+/**
  * Builds the direct URL for eBay Sold & Completed listings, sorted by price lowest
  */
 export function getEbaySoldUrl(barcode, title, marketplace = 'CA') {
@@ -31,7 +39,7 @@ export async function fetchEbaySoldLowest(barcode, title, marketplace = 'CA') {
 
     const res = await axios.get(searchUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+        'User-Agent': EBAY_MOBILE_USER_AGENT,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
       },
       timeout: 3500,

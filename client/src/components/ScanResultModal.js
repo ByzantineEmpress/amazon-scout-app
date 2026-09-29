@@ -14,12 +14,17 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { fetchEbaySoldLowest, launchEbaySold } from '../services/ebayService';
+import EbayCompsModal from './EbayCompsModal';
 
 export default function ScanResultModal({ visible, item, onClose }) {
-  if (!item) return null;
-
   const [copyFeedback, setCopyFeedback] = useState(null);
   const [ebayData, setEbayData] = useState({ loading: true, price: null, currencyPrefix: 'CDN$ ' });
+  const [showEbayComps, setShowEbayComps] = useState(false);
+
+  // This guard must stay below the hooks. Returning before them changes how many hooks React
+  // sees between renders, which throws as soon as `item` goes from set back to null while the
+  // component is still mounted.
+  if (!item) return null;
 
   useEffect(() => {
     let isMounted = true;
@@ -116,12 +121,22 @@ export default function ScanResultModal({ visible, item, onClose }) {
     await launchEbaySold(item.barcode, item.title, item.marketplace);
   };
 
+  // The URL already carries the barcode/title, so there is nothing to copy first.
+  const handleOpenEbayComps = () => setShowEbayComps(true);
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        // Android hardware back should dismiss the comps pane before the whole scan card.
+        if (showEbayComps) {
+          setShowEbayComps(false);
+        } else {
+          onClose();
+        }
+      }}
     >
       <View style={styles.overlay}>
         <View style={styles.cardContainer}>
@@ -248,7 +263,7 @@ export default function ScanResultModal({ visible, item, onClose }) {
                     </Text>
                     <Text style={styles.ebayPriceSub}>Verified sold listing</Text>
                   </View>
-                  <TouchableOpacity style={styles.ebayActionBtn} onPress={handleOpenEbaySold}>
+                  <TouchableOpacity style={styles.ebayActionBtn} onPress={handleOpenEbayComps}>
                     <Text style={styles.ebayActionBtnText}>⚡ View Sold Comps</Text>
                   </TouchableOpacity>
                 </View>
@@ -257,12 +272,12 @@ export default function ScanResultModal({ visible, item, onClose }) {
                   <Text style={styles.ebayEmptyText}>
                     {item.usedMin ? 'Looking for completed comps?' : 'Amazon price unavailable?'}
                   </Text>
-                  <TouchableOpacity style={styles.ebayCheckSoldBtn} onPress={handleOpenEbaySold}>
+                  <TouchableOpacity style={styles.ebayCheckSoldBtn} onPress={handleOpenEbayComps}>
                     <Text style={styles.ebayCheckSoldBtnText}>
-                      ⚡ Check Sold Comps on {item.marketplace === 'US' ? 'eBay.com' : 'eBay.ca'} ↗
+                      ⚡ Check Sold Comps on {item.marketplace === 'US' ? 'eBay.com' : 'eBay.ca'}
                     </Text>
                     <Text style={styles.ebayCheckSoldSubtext}>
-                      Auto-copies {item.barcode || 'ISBN'} & opens completed sales filter
+                      Opens sold &amp; completed listings inside the app
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -325,6 +340,14 @@ export default function ScanResultModal({ visible, item, onClose }) {
             <Text style={styles.scanNextButtonText}>SCAN NEXT ITEM ⏩</Text>
           </TouchableOpacity>
         </View>
+
+        <EbayCompsModal
+          visible={showEbayComps}
+          onClose={() => setShowEbayComps(false)}
+          barcode={item.barcode}
+          title={item.title}
+          marketplace={item.marketplace}
+        />
       </View>
     </Modal>
   );
