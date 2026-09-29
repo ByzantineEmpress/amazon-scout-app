@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -25,26 +25,19 @@ import { getEbaySoldUrl, EBAY_MOBILE_USER_AGENT } from '../services/ebayService'
  *    what makes this dependable: the app renders the same page the user would see, so there
  *    is no HTML parsing to break, and no request the app has to disguise.
  *
+ * 3. The parent mounts it only while it is open, so every open begins from fresh state. That
+ *    is deliberate: resetting state inside an effect causes cascading renders, and the linter
+ *    rejects it.
+ *
  * If the embedded view cannot load (eBay sometimes blocks embedded browsers or interposes a
  * consent step), the header's "Browser" button and the failure card both fall back to an
  * in-app browser tab, so the user still never leaves the app.
  */
-export default function EbayCompsModal({ visible, onClose, barcode, title, marketplace = 'CA' }) {
+export default function EbayCompsModal({ onClose, barcode, title, marketplace = 'CA' }) {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const webRef = useRef(null);
-
-  // Reopening should retry, not resume a previous failure.
-  useEffect(() => {
-    if (visible) {
-      setLoading(true);
-      setFailed(false);
-      setCanGoBack(false);
-    }
-  }, [visible]);
-
-  if (!visible) return null;
 
   const url = getEbaySoldUrl(barcode, title, marketplace);
   const marketplaceLabel = marketplace === 'US' ? 'eBay.com' : 'eBay.ca';

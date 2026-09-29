@@ -21,11 +21,6 @@ export default function ScanResultModal({ visible, item, onClose }) {
   const [ebayData, setEbayData] = useState({ loading: true, price: null, currencyPrefix: 'CDN$ ' });
   const [showEbayComps, setShowEbayComps] = useState(false);
 
-  // This guard must stay below the hooks. Returning before them changes how many hooks React
-  // sees between renders, which throws as soon as `item` goes from set back to null while the
-  // component is still mounted.
-  if (!item) return null;
-
   useEffect(() => {
     let isMounted = true;
     if (!item?.barcode && !item?.title) {
@@ -55,6 +50,12 @@ export default function ScanResultModal({ visible, item, onClose }) {
       isMounted = false;
     };
   }, [item?.barcode, item?.title, item?.marketplace]);
+
+  // EVERY hook must be called above this guard. An early return placed between hooks means the
+  // component runs a different number of them depending on whether `item` is set, and React
+  // reacts to that by throwing the moment a scan (or a past scan from History) sets `item`.
+  // The effect above is null-safe: its own guard handles `item` being null.
+  if (!item) return null;
 
   const isRestricted = item.status === 'HARD_GATED' || item.status === 'RESTRICTED';
   const isApprovalRequired = item.status === 'APPROVAL_REQUIRED';
@@ -341,13 +342,15 @@ export default function ScanResultModal({ visible, item, onClose }) {
           </TouchableOpacity>
         </View>
 
-        <EbayCompsModal
-          visible={showEbayComps}
-          onClose={() => setShowEbayComps(false)}
-          barcode={item.barcode}
-          title={item.title}
-          marketplace={item.marketplace}
-        />
+        {/* Mounted only while open, so each open starts from fresh state. */}
+        {showEbayComps ? (
+          <EbayCompsModal
+            onClose={() => setShowEbayComps(false)}
+            barcode={item.barcode}
+            title={item.title}
+            marketplace={item.marketplace}
+          />
+        ) : null}
       </View>
     </Modal>
   );
