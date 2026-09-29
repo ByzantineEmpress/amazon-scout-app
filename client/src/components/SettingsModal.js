@@ -8,10 +8,11 @@ import {
   Switch,
   ScrollView,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform
 } from 'react-native';
 import { getSettings, saveSettings, clearScanHistory, clearOfflineQueue } from '../services/storage';
-import { checkForUpdate, openUpdateDownload, CURRENT_VERSION } from '../services/updateService';
+import { checkForUpdate, openUpdateDownload, downloadAndInstallUpdate, openInstallPermissionSettings, CURRENT_VERSION } from '../services/updateService';
 
 export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
   const [marketplace, setMarketplace] = useState('CA');
@@ -19,6 +20,8 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState(null);
+  const [installing, setInstalling] = useState(false);
+  const [installProgress, setInstallProgress] = useState(0);
 
   useEffect(() => {
     if (visible) {
@@ -48,11 +51,44 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
     }
   };
 
-  const handleDownloadUpdate = async (url) => {
+  const handleDownloadUpdate = async (url, isDirectApk) => {
+    if (installing) return;
+
+    // iOS cannot install a downloaded bundle, and a release with no APK asset has nothing to
+    // install, so both simply open the page.
+    if (Platform.OS !== 'android' || !isDirectApk) {
+      try {
+        await openUpdateDownload(url);
+      } catch (err) {
+        Alert.alert('Download Error', 'Could not open update link: ' + err.message);
+      }
+      return;
+    }
+
+    setInstalling(true);
+    setInstallProgress(0);
     try {
-      await openUpdateDownload(url);
+      await downloadAndInstallUpdate(url, (progress) => {
+        const total = progress?.totalBytes || 0;
+        const written = progress?.bytesWritten || 0;
+        if (total > 0) setInstallProgress(Math.min(1, written / total));
+      });
+      Alert.alert(
+        'Almost done',
+        'Android will ask you to confirm the install. Tap Install to finish — your scans and settings are kept.'
+      );
     } catch (err) {
-      Alert.alert('Download Error', 'Could not open update link: ' + err.message);
+      Alert.alert(
+        'Could not install automatically',
+        `${err.message}\n\nAndroid needs your permission for Amazon Scout to install apps.`,
+        [
+          { text: 'Allow installs', onPress: () => openInstallPermissionSettings().catch(() => {}) },
+          { text: 'Open in browser', onPress: () => openUpdateDownload(url).catch(() => {}) },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    } finally {
+      setInstalling(false);
     }
   };
 
@@ -182,12 +218,24 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
                     </Text>
                   ) : null}
                   <TouchableOpacity
-                    style={styles.downloadUpdateBtn}
-                    onPress={() => handleDownloadUpdate(updateResult.downloadUrl)}
+                    style={[styles.downloadUpdateBtn, installing && styles.btnDisabled]}
+                    onPress={() => handleDownloadUpdate(updateResult.downloadUrl, updateResult.isDirectApk)}
+                    disabled={installing}
                   >
-                    <Text style={styles.downloadUpdateBtnText}>
-                      ⬇️ Download & Install ({updateResult.isDirectApk ? 'APK' : 'GitHub'})
-                    </Text>
+                    {installing ? (
+                      <View style={styles.downloadProgressRow}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={[styles.downloadUpdateBtnText, styles.downloadProgressText]}>
+                          {installProgress > 0
+                            ? `Downloading ${Math.round(installProgress * 100)}%`
+                            : 'Starting download...'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.downloadUpdateBtnText}>
+                        {updateResult.isDirectApk ? '⬇️ Install Update' : '↗️ Open Release Page'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               )}
@@ -410,6 +458,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
     alignItems: 'center'
+  },
+  downloadProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  downloadProgressText: {
+    marginLeft: 8
   },
   downloadUpdateBtnText: {
     color: '#FFFFFF',

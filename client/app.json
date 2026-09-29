@@ -21,7 +21,8 @@
         "backgroundImage": "./assets/android-icon-background.png"
       },
       "permissions": [
-        "CAMERA"
+        "CAMERA",
+        "REQUEST_INSTALL_PACKAGES"
       ]
     },
     "plugins": [
