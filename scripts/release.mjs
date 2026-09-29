@@ -91,9 +91,16 @@ function preflight() {
   // Allow a resume: changes limited to the files this script owns are exactly what a
   // half-finished run leaves behind (e.g. the editor was closed without saving). Anything
   // else is unrelated work that must not be swept into a release tag.
-  const dirty = git(['status', '--porcelain'])
-    .split('\n')
-    .map((line) => line.slice(3).trim())
+  //
+  // Deliberately not `git status --porcelain`: its two-column status prefix means the first
+  // line begins with a space, which a whole-output .trim() removes, shifting the parsed path
+  // by one character. Listing the paths directly avoids that class of bug entirely.
+  const dirty = [
+    ...git(['diff', '--name-only']).split('\n'),
+    ...git(['diff', '--cached', '--name-only']).split('\n'),
+    ...git(['ls-files', '--others', '--exclude-standard']).split('\n'),
+  ]
+    .map((line) => line.trim())
     .filter(Boolean);
 
   const owned = new Set([rel(APP_JSON), rel(CLIENT_PKG), rel(notesPath)]);
