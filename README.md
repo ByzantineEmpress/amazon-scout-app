@@ -146,6 +146,12 @@ Once installed, you never need to manually check GitHub again:
 
 #### Method 2: Triggering a New APK Build
 
+The quickest path does everything below — it bumps both version files, scaffolds the notes file, opens it in your editor, runs the tests, then commits, tags and pushes:
+```bash
+npm run release -- 1.0.9
+```
+Add `--dry-run` to rehearse the whole thing without touching git history. Or do it by hand:
+
 1. **Bump the version** in `client/app.json` (`expo.version`) and `client/package.json` (`version`). The workflow fails the release if the tag and `app.json` disagree, because the in-app updater compares those two values.
 2. **Write the release notes** in `release-notes/v<version>.md`. These are displayed inside the app on its *"update available"* card, so write them for a user — see [release-notes/README.md](release-notes/README.md). The build fails early if this file is missing.
 3. **Commit and push.**

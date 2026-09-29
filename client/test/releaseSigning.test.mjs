@@ -155,9 +155,9 @@ test('it refuses to continue when the release block cannot be found', () => {
 
 console.log('');
 if (failures.length === 0) {
-  console.log(`✅ ${passed} passed\n`);
+  console.log(`PASS: ${passed} passed\n`);
 } else {
-  console.log(`❌ ${failures.length} failed, ${passed} passed\n`);
+  console.log(`FAIL: ${failures.length} failed, ${passed} passed\n`);
   for (const name of failures) console.log(`   - ${name}`);
   console.log('');
   process.exitCode = 1;

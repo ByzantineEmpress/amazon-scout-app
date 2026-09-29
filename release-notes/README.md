@@ -31,8 +31,22 @@ Start from this:
 
 ## Release checklist
 
+The easy path does all of this for you:
+
+```bash
+npm run release -- 1.0.9
+```
+
+It bumps both version files, creates `release-notes/v1.0.9.md` from [`_template.md`](_template.md),
+opens it in your editor (`$EDITOR`, otherwise notepad), runs the tests, then commits, tags and
+pushes. It refuses to run on a dirty tree, off `main`, if the tag already exists, if the version
+is not higher than the current one, or if the notes still contain the template marker.
+`--dry-run` performs every local step but touches no git history.
+
+By hand, the same steps are:
+
 1. Bump `expo.version` in `client/app.json` **and** `version` in `client/package.json` — the
    workflow fails the release if the tag and `app.json` disagree.
-2. Add `release-notes/v<version>.md`.
+2. Add `release-notes/v<version>.md` (and delete the `<!-- TODO: -->` line).
 3. Commit and push.
 4. Tag and push the tag: `git tag v1.0.9 && git push origin v1.0.9`
