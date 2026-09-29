@@ -30,7 +30,7 @@ const TEMPLATE_MARKER = '<!-- TODO:';
 const rel = (p) => path.relative(root, p).split(path.sep).join('/');
 
 function die(message) {
-  console.error(`\n✖ ${message}\n`);
+  console.error(`\nERROR: ${message}\n`);
   process.exit(1);
 }
 
@@ -108,7 +108,7 @@ function preflight() {
   if (foreign.length > 0) {
     die(
       `Working tree is not clean:\n\n${foreign.join('\n')}\n\n` +
-        `Commit or stash first — a release tag is hard to walk back.`
+        `Commit or stash first - a release tag is hard to walk back.`
     );
   }
   if (dirty.length > 0) {
@@ -194,7 +194,7 @@ function ensureNotesWritten() {
     );
   }
 
-  console.log(`\n  Opening ${rel(notesPath)} — save and close it when you are done.\n`);
+  console.log(`\n  Opening ${rel(notesPath)} - save and close it when you are done.\n`);
   if (!openEditor(notesPath)) {
     die(`Could not launch an editor. Set the EDITOR environment variable, or edit\n${rel(notesPath)} by hand and re-run.`);
   }
@@ -226,7 +226,8 @@ function ship(notesBody) {
   console.log('');
   for (const [label, args] of steps) {
     if (dryRun) {
-      console.log(`  [dry-run] would run: ${label} ${args.filter((a) => !a.includes('\n')).join(' ')}`);
+      const shown = args.map((a) => (a.includes('\n') ? '<release notes>' : a));
+      console.log(`  [dry-run] would run: git ${shown.join(' ')}`);
       continue;
     }
     if (label === 'git commit') console.log('  committing with the release notes as the message');
@@ -242,7 +243,7 @@ function actionsUrl() {
 
 // --- run ---------------------------------------------------------------------
 
-console.log(`\n⚡ Amazon Scout release${dryRun ? ' (dry run)' : ''}: v${version}\n`);
+console.log(`\n=== Amazon Scout release${dryRun ? ' (dry run)' : ''}: v${version} ===\n`);
 
 const currentVersion = preflight();
 console.log(`  current version: ${currentVersion}`);
@@ -255,7 +256,7 @@ ship(notesBody);
 const url = actionsUrl();
 if (dryRun) {
   console.log(
-    `\n✔ Dry run complete — nothing was committed, tagged or pushed.\n\n` +
+    `\nDry run complete - nothing was committed, tagged or pushed.\n\n` +
       `  Inspect the changes, then undo them with:\n` +
       `    git checkout -- client/app.json client/package.json\n` +
       `    rm release-notes/v${version}.md\n\n` +
@@ -263,9 +264,9 @@ if (dryRun) {
   );
 } else {
   console.log(
-    `\n✔ Released v${version}.\n\n` +
+    `\nReleased v${version}.\n\n` +
       `  GitHub Actions is building the signed APK (~8 minutes)${url ? `:\n    ${url}` : ''}\n` +
-      `  It will fail if the tag and app.json disagree, or if ${rel(notesPath)} is missing —\n` +
+      `  It will fail if the tag and app.json disagree, or if ${rel(notesPath)} is missing -\n` +
       `  both are already checked here, so a failure means something else needs a look.\n`
   );
 }
