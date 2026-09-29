@@ -150,6 +150,36 @@ test('implausible lengths are rejected with the length reported', () => {
   assertEqual(validateScannedCode('').reason, 'empty', 'reason');
 });
 
+// --- price add-ons on book barcodes -----------------------------------------
+
+test('a book barcode with an add-on glued on still resolves to the ISBN', () => {
+  // Books often carry a 2- or 5-digit price add-on beside the main barcode, and some platforms
+  // report the two concatenated. The ISBN itself must still come through.
+  const five = validateScannedCode('978043942089199999');
+  assertEqual(five.ok, true, '13+5 ok');
+  assertEqual(five.code, '9780439420891', '13+5 code');
+
+  const two = validateScannedCode('978043942089199');
+  assertEqual(two.ok, true, '13+2 ok');
+  assertEqual(two.code, '9780439420891', '13+2 code');
+});
+
+test('a real ITF-14 is kept whole, not truncated to a UPC-A plus add-on', () => {
+  // 14 digits is a genuine symbology length, so the full code must be validated as-is.
+  const verdict = validateScannedCode('12345678901231');
+  assertEqual(verdict.ok, true, 'ok');
+  assertEqual(verdict.code, '12345678901231', 'code');
+});
+
+test('a 13-digit code is never truncated to a valid 12-digit prefix', () => {
+  // "978013235088" is itself a valid UPC-A, so a rule of "strip any trailing digits" would
+  // accept this bad EAN as that UPC-A plus a 1-digit add-on - looking up the wrong product.
+  // Add-ons are only 2 or 5 digits, so the tail must be rejected.
+  const verdict = validateScannedCode('9780132350885');
+  assertEqual(verdict.ok, false, 'ok');
+  assertEqual(verdict.reason, 'check-digit', 'reason');
+});
+
 // --- frame agreement ---------------------------------------------------------
 
 test('one frame is not enough', () => {

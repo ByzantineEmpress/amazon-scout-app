@@ -2,47 +2,13 @@ import axios from 'axios';
 import { evaluateRestrictions } from './gatingRules.js';
 import { addToOfflineQueue } from './storage.js';
 
+// The ISBN maths now lives in its own pure module so it can be unit tested without pulling in
+// axios and AsyncStorage. Re-exported here so the public import surface is unchanged.
+import { isbn10to13, isbn13to10, normalizeBarcode } from './isbn.js';
+export { isbn10to13, isbn13to10, normalizeBarcode };
+
 // In-memory cache for ultra-fast repeat lookups (0ms latency on phone)
 const localCache = new Map();
-
-/**
- * Convert an ISBN-10 to ISBN-13
- */
-export function isbn10to13(isbn10) {
-  const clean = isbn10.replace(/[^0-9X]/gi, '');
-  if (clean.length !== 10) return isbn10;
-  const base = '978' + clean.substring(0, 9);
-  let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    sum += parseInt(base[i], 10) * (i % 2 === 0 ? 1 : 3);
-  }
-  const check = (10 - (sum % 10)) % 10;
-  return base + check;
-}
-
-/**
- * Convert an ISBN-13 to ISBN-10 (Amazon ASIN for physical books)
- */
-export function isbn13to10(isbn13) {
-  const clean = isbn13.replace(/[^0-9]/g, '');
-  if (clean.length !== 13 || !clean.startsWith('978')) return null;
-  const base = clean.substring(3, 12);
-  let sum = 0;
-  for (let i = 0; i < 9; i++) {
-    sum += parseInt(base[i], 10) * (10 - i);
-  }
-  const remainder = (11 - (sum % 11)) % 11;
-  const check = remainder === 10 ? 'X' : remainder.toString();
-  return base + check;
-}
-
-/**
- * Normalize barcode string
- */
-export function normalizeBarcode(raw) {
-  if (!raw) return '';
-  return raw.replace(/[^0-9X]/gi, '').toUpperCase();
-}
 
 /**
  * 1. Live Amazon Search Extractor (Gets Real Title, ASIN, Buy Box, and Lowest Used Price)

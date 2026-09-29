@@ -33,6 +33,9 @@ export const SCANNER_BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'itf14'];
 /** Digit counts those symbologies use: EAN-8, UPC-A, EAN-13, ITF-14. */
 const VALID_LENGTHS = [8, 12, 13, 14];
 
+/** EAN-2 and EAN-5 are the only add-on supplements printed beside a retail barcode. */
+const ADD_ON_LENGTHS = [2, 5];
+
 /**
  * GS1 modulo-10 check digit. Counting left from the end of the body, digits alternate weight
  * 3, 1, 3, 1 ... This is shared by EAN-8, UPC-A, EAN-13 and ITF-14; UPC-E is the exception and
@@ -70,15 +73,31 @@ export function validateScannedCode(rawData) {
     return { ok: false, reason: 'not-numeric' };
   }
 
+  if (VALID_LENGTHS.includes(raw.length) && isValidProductCode(raw)) {
+    return { ok: true, code: raw };
+  }
+
+  // Retail media frequently carries a price add-on (2 or 5 digits) printed beside the main
+  // barcode, and some platforms report the two glued together. Such a value looks like an
+  // invalid code of an odd length, so before rejecting it, try the leading EAN-13 / UPC-A on
+  // its own. Books are exactly where this matters. Costs nothing when it never fires.
+  //
+  // The tail length must be a real add-on length. Loosening this to "any extra digits" would
+  // accept a misread 13-digit EAN as whatever 12-digit UPC-A its first digits happened to
+  // spell - which is the very class of wrong lookup this module exists to prevent.
+  for (const mainLength of [13, 12]) {
+    if (!ADD_ON_LENGTHS.includes(raw.length - mainLength)) continue;
+    const candidate = raw.slice(0, mainLength);
+    if (isValidProductCode(candidate)) {
+      return { ok: true, code: candidate };
+    }
+  }
+
   if (!VALID_LENGTHS.includes(raw.length)) {
     return { ok: false, reason: `unexpected-length-${raw.length}` };
   }
 
-  if (!isValidProductCode(raw)) {
-    return { ok: false, reason: 'check-digit' };
-  }
-
-  return { ok: true, code: raw };
+  return { ok: false, reason: 'check-digit' };
 }
 
 /**
