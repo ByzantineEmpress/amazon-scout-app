@@ -23,6 +23,12 @@ import HistoryModal from './src/components/HistoryModal';
 import OfflineQueueModal from './src/components/OfflineQueueModal';
 import ManualEntryModal from './src/components/ManualEntryModal';
 import { checkForUpdate } from './src/services/updateService';
+import {
+  SCANNER_BARCODE_TYPES,
+  validateScannedCode,
+  confirmScan,
+  EMPTY_CONFIRMATION
+} from './src/services/barcodeValidation';
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -56,6 +62,11 @@ export default function App() {
 
   const lastScannedTime = useRef(0);
   const lastBarcode = useRef('');
+  // Frame-agreement gate state, plus the code currently awaiting a confirming frame. The
+  // pending code drives the "hold steady" hint, so a code that was seen but not yet trusted is
+  // visibly not being ignored.
+  const scanConfirmRef = useRef(EMPTY_CONFIRMATION);
+  const [pendingCode, setPendingCode] = useState('');
 
   useEffect(() => {
     initApp();
@@ -97,19 +108,41 @@ export default function App() {
   const handleBarcodeScanned = async ({ data }) => {
     if (!scanningActive || loading) return;
 
-    const now = Date.now();
-    // Debounce duplicate scans
-    if (data === lastBarcode.current && now - lastScannedTime.current < (settings.scanCooldownMs || 1500)) {
+    // 1. Only product barcodes get past this. A QR code or an asset tag would otherwise have
+    //    its letters stripped by normalizeBarcode and be looked up as a real barcode.
+    const verdict = validateScannedCode(data);
+    if (!verdict.ok) {
+      scanConfirmRef.current = EMPTY_CONFIRMATION;
+      if (pendingCode) setPendingCode('');
       return;
     }
 
-    lastBarcode.current = data;
+    // 2. Require the same code on consecutive frames, so a single-frame misread cannot trigger
+    //    a lookup. One extra frame is imperceptible but removes most bad reads.
+    const step = confirmScan(scanConfirmRef.current, verdict.code);
+    scanConfirmRef.current = step.state;
+    if (!step.accept) {
+      if (pendingCode !== verdict.code) setPendingCode(verdict.code);
+      return;
+    }
+
+    const code = verdict.code;
+    const now = Date.now();
+
+    // 3. Debounce an immediate re-scan of the same code (e.g. straight after closing the card).
+    if (code === lastBarcode.current && now - lastScannedTime.current < (settings.scanCooldownMs || 1500)) {
+      return;
+    }
+
+    scanConfirmRef.current = EMPTY_CONFIRMATION;
+    if (pendingCode) setPendingCode('');
+    lastBarcode.current = code;
     lastScannedTime.current = now;
     setScanningActive(false);
     setLoading(true);
 
     try {
-      const result = await scanBarcode(data, settings.marketplace || 'CA');
+      const result = await scanBarcode(code, settings.marketplace || 'CA');
       setLoading(false);
       setScannedItem(result.data);
       setResultModalVisible(true);
@@ -290,7 +323,7 @@ export default function App() {
             autofocus={autofocusMode}
             zoom={zoom}
             barcodeScannerSettings={{
-              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code39', 'code128', 'qr']
+              barcodeTypes: SCANNER_BARCODE_TYPES
             }}
             onBarcodeScanned={scanningActive ? handleBarcodeScanned : undefined}
             onMountError={(err) => {
@@ -331,7 +364,9 @@ export default function App() {
               <View style={[styles.corner, styles.bottomRight]} />
               <View style={styles.laserLine} />
             </View>
-            <Text style={styles.reticleHint}>Align barcode / ISBN • Tap screen to focus</Text>
+            <Text style={[styles.reticleHint, pendingCode ? styles.reticleHintConfirming : null]}>
+              {pendingCode ? 'Hold steady to confirm...' : 'Align barcode / ISBN • Tap screen to focus'}
+            </Text>
           </View>
 
           {loading ? (
@@ -582,6 +617,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 8
+  },
+  reticleHintConfirming: {
+    color: '#48BB78'
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
