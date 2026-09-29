@@ -12,12 +12,28 @@ import {
   Platform
 } from 'react-native';
 import { CameraView } from 'expo-camera';
-import { recognizeText } from '@infinitered/react-native-mlkit-text-recognition';
 import { File } from 'expo-file-system';
 import { extractIsbnCandidates } from '../services/isbn';
 import { confirmScan, EMPTY_CONFIRMATION } from '../services/barcodeValidation';
 import { guessTitleAndAuthor } from '../services/titleScan';
 import { searchBooksByTitle } from '../services/titleSearch';
+
+/**
+ * The OCR module is loaded on first use rather than imported at the top, and that matters.
+ * It is a native module, and its own entry point calls `requireNativeModule` the moment it is
+ * evaluated - which throws wherever the native code is absent, Expo Go above all. A top-level
+ * import here would therefore stop the whole app from starting in Expo Go, even for someone who
+ * never opens this screen. Deferring it keeps `npm start` working for everything else, and this
+ * screen simply reports that reading failed.
+ */
+let recognizeTextModule = null;
+
+function getRecognizeText() {
+  if (!recognizeTextModule) {
+    recognizeTextModule = require('@infinitered/react-native-mlkit-text-recognition');
+  }
+  return recognizeTextModule.recognizeText;
+}
 
 /**
  * Reads a book that has no barcode.
@@ -53,6 +69,7 @@ export default function IsbnScanModal({ onClose, onLookup }) {
 
   /** Capture one frame, OCR it, and clean the temporary file up immediately. */
   const readFrame = async () => {
+    const recognizeText = getRecognizeText();
     const photo = await cameraRef.current.takePictureAsync({ quality: 0.3 });
     try {
       return await recognizeText(photo.uri);
@@ -124,7 +141,7 @@ export default function IsbnScanModal({ onClose, onLookup }) {
         setAuthor(guess.author || author);
         setStatus('Check the details, then search');
       }
-    } catch (e) {
+    } catch (_e) {
       setStatus('Reading failed — try again, or type it below');
     } finally {
       setReading(false);
@@ -140,7 +157,7 @@ export default function IsbnScanModal({ onClose, onLookup }) {
       setResults(found);
       setSearched(true);
       setStatus(found.length === 0 ? 'No matches — try fewer words' : `${found.length} possible matches`);
-    } catch (e) {
+    } catch (_e) {
       setResults([]);
       setSearched(true);
       setStatus('Search failed — check your signal');
