@@ -58,6 +58,8 @@ export default function IsbnScanModal({ onClose, onLookup }) {
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraArmed, setCameraArmed] = useState(false);
 
   const cameraRef = useRef(null);
   const inFlight = useRef(false);
@@ -67,10 +69,24 @@ export default function IsbnScanModal({ onClose, onLookup }) {
   // The parent mounts this only while it is open, so state starts fresh every time and there is
   // no need to reset anything in an effect (which would cause cascading renders).
 
+  // Mount the camera a beat late. The main viewfinder unmounts in the same React commit as this
+  // screen mounts, and Android hands back a black preview - sometimes a bind failure - if a
+  // second camera grabs the device while the first is still shutting down. The delay is hidden
+  // behind the "Starting camera..." overlay.
+  useEffect(() => {
+    const id = setTimeout(() => setCameraArmed(true), 350);
+    return () => clearTimeout(id);
+  }, []);
+
   /** Capture one frame, OCR it, and clean the temporary file up immediately. */
   const readFrame = async () => {
     const recognizeText = getRecognizeText();
-    const photo = await cameraRef.current.takePictureAsync({ quality: 0.3 });
+    // shutterSound: false matters more than it looks - this captures a frame every 700ms, and
+    // a shutter click that often is unbearable in a quiet shop.
+    const photo = await cameraRef.current.takePictureAsync({
+      quality: 0.3,
+      shutterSound: false
+    });
     try {
       return await recognizeText(photo.uri);
     } finally {
@@ -204,13 +220,28 @@ export default function IsbnScanModal({ onClose, onLookup }) {
         </View>
 
         <View style={styles.cameraWrap}>
-          <CameraView
-            ref={cameraRef}
-            style={styles.camera}
-            facing="back"
-            autofocus="on"
-            enableTorch={torch}
-          />
+          {cameraArmed ? (
+            <CameraView
+              ref={cameraRef}
+              style={styles.camera}
+              facing="back"
+              autofocus="on"
+              enableTorch={torch}
+              animateShutter={false}
+              onCameraReady={() => setCameraReady(true)}
+              onMountError={(err) => {
+                setCameraReady(false);
+                setStatus(`Camera unavailable: ${err?.message || 'unknown error'}`);
+              }}
+            />
+          ) : null}
+
+          {!cameraReady ? (
+            <View style={styles.cameraStarting} pointerEvents="none">
+              <ActivityIndicator color="#48BB78" />
+              <Text style={styles.cameraStartingText}>Starting camera...</Text>
+            </View>
+          ) : null}
 
           {mode === 'isbn' ? (
             <View style={styles.reticleOverlay} pointerEvents="none">
@@ -334,6 +365,13 @@ const styles = StyleSheet.create({
   tabTextActive: { color: '#FFFFFF' },
   cameraWrap: { height: 260, backgroundColor: '#000000' },
   camera: { flex: 1 },
+  cameraStarting: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.75)'
+  },
+  cameraStartingText: { color: '#A0AEC0', fontSize: 12, fontWeight: '700', marginTop: 8 },
   reticleOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   reticleBox: { width: '82%', height: 84 },
   corner: { position: 'absolute', width: 26, height: 26, borderColor: '#48BB78' },

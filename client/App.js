@@ -318,21 +318,29 @@ export default function App() {
 
         {/* Live Camera Viewfinder */}
         <View style={styles.cameraContainer}>
-          <CameraView
-            style={styles.camera}
-            facing="back"
-            enableTorch={torch}
-            autofocus={autofocusMode}
-            zoom={zoom}
-            barcodeScannerSettings={{
-              barcodeTypes: SCANNER_BARCODE_TYPES
-            }}
-            onBarcodeScanned={scanningActive ? handleBarcodeScanned : undefined}
-            onMountError={(err) => {
-              console.warn('Camera mount error:', err);
-              Alert.alert('Camera Error', err?.message || 'Could not access camera preview.');
-            }}
-          />
+          {/* Only one camera can hold the device at a time: Android gives a second CameraView a
+              black preview rather than an error. The ISBN screen needs the camera, so this
+              preview unmounts while it is open. expo-camera's `active` prop would be tidier, but
+              it is iOS-only. The placeholder view keeps the layout from collapsing. */}
+          {isbnScanVisible ? (
+            <View style={styles.camera} />
+          ) : (
+            <CameraView
+              style={styles.camera}
+              facing="back"
+              enableTorch={torch}
+              autofocus={autofocusMode}
+              zoom={zoom}
+              barcodeScannerSettings={{
+                barcodeTypes: SCANNER_BARCODE_TYPES
+              }}
+              onBarcodeScanned={scanningActive ? handleBarcodeScanned : undefined}
+              onMountError={(err) => {
+                console.warn('Camera mount error:', err);
+                Alert.alert('Camera Error', err?.message || 'Could not access camera preview.');
+              }}
+            />
+          )}
 
           {/* Touch-to-Focus Transparent Touch Layer */}
           <TouchableWithoutFeedback
