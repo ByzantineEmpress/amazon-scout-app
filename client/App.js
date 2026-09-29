@@ -22,6 +22,7 @@ import SettingsModal from './src/components/SettingsModal';
 import HistoryModal from './src/components/HistoryModal';
 import OfflineQueueModal from './src/components/OfflineQueueModal';
 import ManualEntryModal from './src/components/ManualEntryModal';
+import IsbnScanModal from './src/components/IsbnScanModal';
 import { checkForUpdate } from './src/services/updateService';
 import {
   SCANNER_BARCODE_TYPES,
@@ -43,6 +44,7 @@ export default function App() {
   const [historyVisible, setHistoryVisible] = useState(false);
   const [offlineVisible, setOfflineVisible] = useState(false);
   const [manualModalVisible, setManualModalVisible] = useState(false);
+  const [isbnScanVisible, setIsbnScanVisible] = useState(false);
 
   // Camera focus & zoom
   const [autofocusMode, setAutofocusMode] = useState('on');
@@ -379,13 +381,33 @@ export default function App() {
 
         {/* Bottom Controls Bar */}
         <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={styles.manualEntryBtn}
-            onPress={() => setManualModalVisible(true)}
-          >
-            <Text style={styles.manualEntryBtnText}>⌨️ Type Barcode / ISBN</Text>
-          </TouchableOpacity>
+          <View style={styles.bottomBarRow}>
+            <TouchableOpacity
+              style={[styles.manualEntryBtn, styles.bottomBarButtonFirst]}
+              onPress={() => setIsbnScanVisible(true)}
+            >
+              <Text style={styles.manualEntryBtnText}>📖 Scan Printed ISBN</Text>
+              <Text style={styles.bottomBarSubText}>No barcode? Older books</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.manualEntryBtn}
+              onPress={() => setManualModalVisible(true)}
+            >
+              <Text style={styles.manualEntryBtnText}>⌨️ Type It In</Text>
+              <Text style={styles.bottomBarSubText}>10 or 13 digits</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Read a book with no barcode: printed ISBN, or title for pre-1970 books.
+            Mounted only while open, so each visit starts from fresh state. */}
+        {isbnScanVisible ? (
+          <IsbnScanModal
+            onClose={() => setIsbnScanVisible(false)}
+            onLookup={handleManualLookup}
+          />
+        ) : null}
 
         {/* Manual Barcode Entry Modal */}
         <ManualEntryModal
@@ -656,9 +678,22 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: Platform.OS === 'android' ? 60 : 24 // Elevated clearance above Android home button
   },
+  bottomBarRow: {
+    flexDirection: 'row'
+  },
+  bottomBarButtonFirst: {
+    flex: 1,
+    marginRight: 10
+  },
+  bottomBarSubText: {
+    color: '#A0AEC0',
+    fontSize: 11,
+    marginTop: 3
+  },
   manualEntryBtn: {
+    flex: 1,
     backgroundColor: '#2D3748',
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,

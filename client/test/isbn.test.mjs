@@ -40,10 +40,21 @@ function assertEqual(actual, expected, label) {
   }
 }
 
+function assertTrue(value, label) {
+  if (value !== true) throw new Error(`${label}: expected true, got ${JSON.stringify(value)}`);
+}
+
 // isbn.js has no imports, so the source can be evaluated directly after dropping `export`.
 const source = fs.readFileSync(path.join(here, '..', 'src', 'services', 'isbn.js'), 'utf8');
-const { isbn10to13, isbn13to10, normalizeBarcode } = new Function(
-  `${source.replace(/^export /gm, '')}\nreturn { isbn10to13, isbn13to10, normalizeBarcode };`
+const {
+  isbn10to13, isbn13to10, normalizeBarcode,
+  isbn10CheckDigit, isValidIsbn10, isValidIsbn13, isValidIsbn, pickBestIsbn, extractIsbnCandidates
+} = new Function(
+  `${source.replace(/^export /gm, '')}
+return {
+  isbn10to13, isbn13to10, normalizeBarcode,
+  isbn10CheckDigit, isValidIsbn10, isValidIsbn13, isValidIsbn, pickBestIsbn, extractIsbnCandidates
+};`
 )();
 
 console.log('\nisbn.js\n');
@@ -109,6 +120,106 @@ test('normalization of nothing is empty, not a crash', () => {
   assertEqual(normalizeBarcode(''), '', 'empty string');
   assertEqual(normalizeBarcode(null), '', 'null');
   assertEqual(normalizeBarcode(undefined), '', 'undefined');
+});
+
+// --- ISBN-10 validation: mod-11 and the letter -------------------------------
+
+test('the ISBN-10 check digit is X when mod-11 produces 10', () => {
+  assertEqual(isbn10CheckDigit('043942089'), 'X', 'check digit');
+  assertEqual(isbn10CheckDigit('013235088'), '2', 'ordinary digit');
+});
+
+test('valid ISBN-10s are accepted, including an X check digit', () => {
+  assertTrue(isValidIsbn10('043942089X'), '043942089X');
+  assertTrue(isValidIsbn10('0132350882'), '0132350882');
+  assertTrue(isValidIsbn10('0743273567'), '0743273567');
+});
+
+test('a wrong check digit or wrong length is rejected', () => {
+  assertEqual(isValidIsbn10('0439420890'), false, 'X expected, digit given');
+  assertEqual(isValidIsbn10('0132350881'), false, 'off by one');
+  assertEqual(isValidIsbn10('043942089'), false, 'nine characters');
+  assertEqual(isValidIsbn10('04394208912'), false, 'eleven characters');
+});
+
+test('an X anywhere but the last position is invalid', () => {
+  assertEqual(isValidIsbn10('0439X2089X'), false, 'X in the middle');
+  assertEqual(isValidIsbn10('X439420892'), false, 'X at the front');
+});
+
+// --- ISBN-13 validation ------------------------------------------------------
+
+test('valid ISBN-13s are accepted', () => {
+  assertTrue(isValidIsbn13('9780439420891'), '9780439420891');
+  assertTrue(isValidIsbn13('9780132350884'), '9780132350884');
+});
+
+test('a valid EAN-13 that is not a book is not an ISBN', () => {
+  // 4006381333931 is a well-formed EAN-13 (body sums to 89 -> check 1) but has no 978/979
+  // Bookland prefix, so it is a product code, not a book number.
+  assertEqual(isValidIsbn13('4006381333931'), false, 'non-book prefix');
+  assertEqual(isValidIsbn13('9780132350885'), false, 'bad check digit');
+  assertEqual(isValidIsbn('4006381333931'), false, 'neither form');
+});
+
+// --- finding an ISBN in photographed text ------------------------------------
+
+test('a bare ISBN-13 is found', () => {
+  assertEqual(JSON.stringify(extractIsbnCandidates('9780439420891')), JSON.stringify(['9780439420891']), 'found');
+});
+
+test('a hyphenated ISBN-10 ending in X is found', () => {
+  assertEqual(JSON.stringify(extractIsbnCandidates('ISBN 0-439-42089-X')), JSON.stringify(['043942089X']), 'found');
+});
+
+test('a labelled ISBN-13 is found', () => {
+  assertEqual(JSON.stringify(extractIsbnCandidates('ISBN-13: 978-0-439-42089-1')), JSON.stringify(['9780439420891']), 'found');
+});
+
+test('an ISBN printed beside its price add-on is still found', () => {
+  assertEqual(JSON.stringify(extractIsbnCandidates('9780439420891 51999')), JSON.stringify(['9780439420891']), 'found');
+});
+
+test('two ISBNs on one page are both found, in reading order', () => {
+  const text = 'ISBN 0-439-42089-X\nISBN-13: 978-0-439-42089-1';
+  assertEqual(JSON.stringify(extractIsbnCandidates(text)), JSON.stringify(['043942089X', '9780439420891']), 'both');
+});
+
+test('a misread digit yields nothing rather than a wrong number', () => {
+  // One digit of a real ISBN changed: the check digit no longer agrees, so it is dropped.
+  assertEqual(extractIsbnCandidates('9780439420895').length, 0, 'nothing accepted');
+});
+
+test('text without an ISBN yields nothing', () => {
+  assertEqual(extractIsbnCandidates('THE GREAT GATSBY').length, 0, 'no digits');
+  assertEqual(extractIsbnCandidates('Call 555-1234 for details').length, 0, 'phone number');
+  assertEqual(extractIsbnCandidates('').length, 0, 'empty');
+  assertEqual(extractIsbnCandidates(null).length, 0, 'null');
+  assertEqual(extractIsbnCandidates(undefined).length, 0, 'undefined');
+});
+
+// --- choosing which number to shop with --------------------------------------
+
+test('the check-digit-valid 978 ISBN-13 wins', () => {
+  // A non-book EAN and an ISBN-10 are also present, as OpenLibrary data often has.
+  assertEqual(pickBestIsbn(['043942089X', '9780439420891', '4006381333931']), '9780439420891', 'chosen');
+});
+
+test('a corrupt 13-digit number loses to a valid ISBN-10', () => {
+  // 9780439420895 fails its check digit, so the validated ISBN-10 is the safer choice.
+  assertEqual(pickBestIsbn(['9780439420895', '043942089X']), '043942089X', 'chosen');
+});
+
+test('a well-shaped but unvalidated 13-digit number is still usable', () => {
+  // Falls back to shape when nothing validates, so imperfect source data still works.
+  assertEqual(pickBestIsbn(['9780439420895']), '9780439420895', 'chosen');
+  assertEqual(pickBestIsbn(['0439420890']), null, 'invalid ISBN-10 with no 13-digit fallback');
+});
+
+test('nothing usable returns null', () => {
+  assertEqual(pickBestIsbn([]), null, 'empty');
+  assertEqual(pickBestIsbn(null), null, 'null');
+  assertEqual(pickBestIsbn(['', 'nonsense']), null, 'junk');
 });
 
 console.log('');
