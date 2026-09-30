@@ -9,7 +9,8 @@ import {
   ScrollView,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Dimensions
 } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { File } from 'expo-file-system';
@@ -46,7 +47,14 @@ function getRecognizeText() {
  *    number is dropped rather than looked up - plus a requirement that two frames agree.
  *  - "Title" reads once, on a tap. It has to: the fields are editable, and a continuous loop
  *    would overwrite whatever the user just typed. Used for books that predate ISBN entirely.
+ *
+ * The preview is full-bleed, with the controls floating over it. An earlier version put the
+ * camera in a fixed-height band, and the preview refused to fill it - the camera image occupied
+ * the top of the band and the rest stayed black. Full screen is also the arrangement the main
+ * scanner already uses successfully, and it gives ML Kit the largest image to read.
  */
+const IS_ANDROID = Platform.OS === 'android';
+
 export default function IsbnScanModal({ onClose, onLookup }) {
   const [mode, setMode] = useState('isbn');
   const [torch, setTorch] = useState(false);
@@ -197,33 +205,12 @@ export default function IsbnScanModal({ onClose, onLookup }) {
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
       <View style={styles.screen}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Scan a Book Without a Barcode</Text>
-          <TouchableOpacity style={styles.doneBtn} onPress={onClose}>
-            <Text style={styles.doneBtnText}>Done</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, mode === 'isbn' && styles.tabActive]}
-            onPress={() => setMode('isbn')}
-          >
-            <Text style={[styles.tabText, mode === 'isbn' && styles.tabTextActive]}>ISBN number</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, mode === 'title' && styles.tabActive]}
-            onPress={() => setMode('title')}
-          >
-            <Text style={[styles.tabText, mode === 'title' && styles.tabTextActive]}>Title (pre-1970)</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.cameraWrap}>
+        {/* Full-bleed preview, behind everything else */}
+        <View style={StyleSheet.absoluteFill}>
           {cameraArmed ? (
             <CameraView
               ref={cameraRef}
-              style={styles.camera}
+              style={StyleSheet.absoluteFill}
               facing="back"
               autofocus="on"
               enableTorch={torch}
@@ -254,155 +241,282 @@ export default function IsbnScanModal({ onClose, onLookup }) {
             </View>
           ) : (
             <View style={styles.pageHint} pointerEvents="none">
-              <Text style={styles.pageHintText}>Fill the box with the title page</Text>
+              <Text style={styles.pageHintText}>Fill the frame with the title page</Text>
             </View>
           )}
-
-          <TouchableOpacity style={[styles.torchBtn, torch && styles.torchBtnOn]} onPress={() => setTorch(!torch)}>
-            <Text style={styles.torchBtnText}>{torch ? '🔦 On' : '🔦 Light'}</Text>
-          </TouchableOpacity>
         </View>
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.panel}>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            <Text style={styles.status}>{status}</Text>
+        {/* Controls, floating over the preview */}
+        <View style={styles.topBar}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Scan a Book Without a Barcode</Text>
+            <TouchableOpacity
+              style={[styles.torchBtn, torch && styles.torchBtnOn]}
+              onPress={() => setTorch(!torch)}
+            >
+              <Text style={styles.torchBtnText}>{torch ? '🔦 On' : '🔦 Light'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.doneBtn} onPress={onClose}>
+              <Text style={styles.doneBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
 
-            {mode === 'isbn' ? (
-              candidate ? (
-                <View style={styles.candidateCard}>
-                  <Text style={styles.candidateLabel}>ISBN read from the page</Text>
-                  <Text style={styles.candidateValue}>{candidate}</Text>
-                  <TouchableOpacity style={styles.confirmBtn} onPress={() => use(candidate)}>
-                    <Text style={styles.confirmBtnText}>Look this up</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.linkBtn} onPress={rescan}>
-                    <Text style={styles.linkBtnText}>Scan again</Text>
-                  </TouchableOpacity>
-                </View>
+          <View style={styles.tabs}>
+            <TouchableOpacity
+              style={[styles.tab, mode === 'isbn' && styles.tabActive]}
+              onPress={() => setMode('isbn')}
+            >
+              <Text style={[styles.tabText, mode === 'isbn' && styles.tabTextActive]}>ISBN number</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, mode === 'title' && styles.tabActive]}
+              onPress={() => setMode('title')}
+            >
+              <Text style={[styles.tabText, mode === 'title' && styles.tabTextActive]}>Title (pre-1970)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.spacer} />
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.bottomWrap}
+        >
+          <View style={styles.panel}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.status}>{status}</Text>
+
+              {mode === 'isbn' ? (
+                candidate ? (
+                  <View style={styles.candidateCard}>
+                    <Text style={styles.candidateLabel}>ISBN read from the page</Text>
+                    <Text style={styles.candidateValue}>{candidate}</Text>
+                    <TouchableOpacity style={styles.confirmBtn} onPress={() => use(candidate)}>
+                      <Text style={styles.confirmBtnText}>Look this up</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.linkBtn} onPress={rescan}>
+                      <Text style={styles.linkBtnText}>Scan again</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <Text style={styles.help}>
+                    Hold the printed ISBN inside the box. Both 10- and 13-digit numbers work, with
+                    or without hyphens. Every number is checksum-verified, so a misread is ignored
+                    rather than looked up.
+                  </Text>
+                )
               ) : (
-                <Text style={styles.help}>
-                  Hold the printed ISBN inside the box. Both 10- and 13-digit numbers work, with or
-                  without hyphens. Every number is checksum-verified, so a misread is ignored rather
-                  than looked up.
-                </Text>
-              )
-            ) : (
-              <View>
-                <TouchableOpacity style={styles.readBtn} onPress={readTitle} disabled={reading}>
-                  <Text style={styles.readBtnText}>{reading ? 'Reading...' : '📖 Read the title page'}</Text>
-                </TouchableOpacity>
-
-                <Text style={styles.fieldLabel}>Title</Text>
-                <TextInput
-                  style={styles.input}
-                  value={title}
-                  onChangeText={setTitle}
-                  placeholder="e.g. The Great Gatsby"
-                  placeholderTextColor="#718096"
-                  autoCorrect={false}
-                />
-
-                <Text style={styles.fieldLabel}>Author (optional)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={author}
-                  onChangeText={setAuthor}
-                  placeholder="e.g. F. Scott Fitzgerald"
-                  placeholderTextColor="#718096"
-                  autoCorrect={false}
-                />
-
-                <TouchableOpacity
-                  style={[styles.searchBtn, !title.trim() && styles.btnDisabled]}
-                  onPress={runSearch}
-                  disabled={!title.trim() || searching}
-                >
-                  <Text style={styles.searchBtnText}>{searching ? 'Searching...' : 'Search OpenLibrary'}</Text>
-                </TouchableOpacity>
-
-                {searching ? <ActivityIndicator color="#48BB78" style={styles.spinner} /> : null}
-
-                {results.map((r) => (
-                  <TouchableOpacity key={r.key} style={styles.resultRow} onPress={() => use(r.isbn)}>
-                    <Text style={styles.resultTitle} numberOfLines={2}>{r.title}</Text>
-                    <Text style={styles.resultMeta} numberOfLines={1}>
-                      {[r.author, r.year].filter(Boolean).join(' · ')}
+                <View>
+                  <TouchableOpacity style={styles.readBtn} onPress={readTitle} disabled={reading}>
+                    <Text style={styles.readBtnText}>
+                      {reading ? 'Reading...' : '📖 Read the title page'}
                     </Text>
-                    <Text style={styles.resultIsbn}>{r.isbn}</Text>
                   </TouchableOpacity>
-                ))}
 
-                {searched && results.length === 0 && !searching ? (
-                  <Text style={styles.help}>Nothing matched. Try just the first few words of the title.</Text>
-                ) : null}
-              </View>
-            )}
-          </ScrollView>
+                  <Text style={styles.fieldLabel}>Title</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={title}
+                    onChangeText={setTitle}
+                    placeholder="e.g. The Great Gatsby"
+                    placeholderTextColor="#718096"
+                    autoCorrect={false}
+                  />
+
+                  <Text style={styles.fieldLabel}>Author (optional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={author}
+                    onChangeText={setAuthor}
+                    placeholder="e.g. F. Scott Fitzgerald"
+                    placeholderTextColor="#718096"
+                    autoCorrect={false}
+                  />
+
+                  <TouchableOpacity
+                    style={[styles.searchBtn, !title.trim() && styles.btnDisabled]}
+                    onPress={runSearch}
+                    disabled={!title.trim() || searching}
+                  >
+                    <Text style={styles.searchBtnText}>
+                      {searching ? 'Searching...' : 'Search OpenLibrary'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {searching ? <ActivityIndicator color="#48BB78" style={styles.spinner} /> : null}
+
+                  {results.map((r) => (
+                    <TouchableOpacity key={r.key} style={styles.resultRow} onPress={() => use(r.isbn)}>
+                      <Text style={styles.resultTitle} numberOfLines={2}>{r.title}</Text>
+                      <Text style={styles.resultMeta} numberOfLines={1}>
+                        {[r.author, r.year].filter(Boolean).join(' · ')}
+                      </Text>
+                      <Text style={styles.resultIsbn}>{r.isbn}</Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  {searched && results.length === 0 && !searching ? (
+                    <Text style={styles.help}>
+                      Nothing matched. Try just the first few words of the title.
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </ScrollView>
+          </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
   );
 }
 
+/** Keep the sheet to roughly half the screen so the preview stays usable behind it. */
+const PANEL_MAX_HEIGHT = Math.round(Dimensions.get('window').height * (IS_ANDROID ? 0.52 : 0.58));
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0F172A' },
+  screen: { flex: 1, backgroundColor: '#000000' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 52,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#1A202C'
+    paddingTop: 50,
+    paddingBottom: 10,
+    paddingHorizontal: 16
   },
   headerTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '800', flex: 1 },
+  torchBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    marginRight: 8
+  },
+  torchBtnOn: { backgroundColor: '#D69E2E' },
+  torchBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   doneBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6, backgroundColor: '#38A169' },
   doneBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  tabs: { flexDirection: 'row', backgroundColor: '#1A202C', paddingHorizontal: 12, paddingBottom: 10 },
-  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, marginHorizontal: 4, backgroundColor: '#2D3748' },
+
+  topBar: { backgroundColor: 'rgba(15,23,42,0.9)' },
+  tabs: { flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 10 },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+    marginHorizontal: 4,
+    backgroundColor: 'rgba(255,255,255,0.14)'
+  },
   tabActive: { backgroundColor: '#3182CE' },
-  tabText: { color: '#A0AEC0', fontSize: 13, fontWeight: '700' },
+  tabText: { color: '#CBD5E0', fontSize: 13, fontWeight: '700' },
   tabTextActive: { color: '#FFFFFF' },
-  cameraWrap: { height: 260, backgroundColor: '#000000' },
-  camera: { flex: 1 },
+
+  spacer: { flex: 1 },
+
   cameraStarting: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.75)'
+    backgroundColor: 'rgba(15, 23, 42, 0.85)'
   },
   cameraStartingText: { color: '#A0AEC0', fontSize: 12, fontWeight: '700', marginTop: 8 },
-  reticleOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+
+  reticleOverlay: {
+    position: 'absolute',
+    top: '26%',
+    left: 0,
+    right: 0,
+    height: 150,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   reticleBox: { width: '82%', height: 84 },
   corner: { position: 'absolute', width: 26, height: 26, borderColor: '#48BB78' },
   topLeft: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3 },
   topRight: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3 },
   bottomLeft: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3 },
   bottomRight: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
-  pageHint: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 8 },
-  pageHintText: { color: '#E2E8F0', fontSize: 12, fontWeight: '700', backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  torchBtn: { position: 'absolute', top: 10, right: 12, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  torchBtnOn: { backgroundColor: '#D69E2E' },
-  torchBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  panel: { flex: 1, paddingHorizontal: 16, paddingTop: 14 },
+  pageHint: { position: 'absolute', top: '30%', left: 0, right: 0, alignItems: 'center' },
+  pageHintText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6
+  },
+
+  bottomWrap: { justifyContent: 'flex-end' },
+  panel: {
+    backgroundColor: '#0F172A',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 18,
+    maxHeight: PANEL_MAX_HEIGHT
+  },
   status: { color: '#ECC94B', fontSize: 14, fontWeight: '800', marginBottom: 10 },
   help: { color: '#A0AEC0', fontSize: 13, lineHeight: 19 },
   candidateCard: { backgroundColor: '#1A202C', borderRadius: 14, padding: 16, alignItems: 'center' },
   candidateLabel: { color: '#A0AEC0', fontSize: 12, fontWeight: '700' },
-  candidateValue: { color: '#F8FAFC', fontSize: 30, fontWeight: '900', letterSpacing: 1.5, marginVertical: 10 },
-  confirmBtn: { backgroundColor: '#38A169', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 10, alignSelf: 'stretch', alignItems: 'center' },
+  candidateValue: {
+    color: '#F8FAFC',
+    fontSize: 30,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    marginVertical: 10
+  },
+  confirmBtn: {
+    backgroundColor: '#38A169',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+    alignSelf: 'stretch',
+    alignItems: 'center'
+  },
   confirmBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
   linkBtn: { marginTop: 12, paddingVertical: 4 },
   linkBtnText: { color: '#90CDF4', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
-  readBtn: { backgroundColor: '#3182CE', paddingVertical: 12, borderRadius: 10, alignItems: 'center', marginBottom: 14 },
+  readBtn: {
+    backgroundColor: '#3182CE',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 14
+  },
   readBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   fieldLabel: { color: '#A0AEC0', fontSize: 12, fontWeight: '700', marginBottom: 4 },
-  input: { backgroundColor: '#1A202C', color: '#F8FAFC', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, borderWidth: 1, borderColor: '#2D3748', marginBottom: 10 },
-  searchBtn: { backgroundColor: '#38A169', paddingVertical: 12, borderRadius: 10, alignItems: 'center', marginTop: 4 },
+  input: {
+    backgroundColor: '#1A202C',
+    color: '#F8FAFC',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#2D3748',
+    marginBottom: 10
+  },
+  searchBtn: {
+    backgroundColor: '#38A169',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 4
+  },
   btnDisabled: { backgroundColor: '#2D3748' },
   searchBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   spinner: { marginTop: 12 },
-  resultRow: { backgroundColor: '#1A202C', borderRadius: 10, padding: 12, marginTop: 10, borderLeftWidth: 3, borderLeftColor: '#48BB78' },
+  resultRow: {
+    backgroundColor: '#1A202C',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#48BB78'
+  },
   resultTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '800' },
   resultMeta: { color: '#A0AEC0', fontSize: 12, marginTop: 3 },
   resultIsbn: { color: '#68D391', fontSize: 12, fontWeight: '700', marginTop: 3 }
