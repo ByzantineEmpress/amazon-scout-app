@@ -33,13 +33,13 @@ import { getEbaySoldUrl, EBAY_MOBILE_USER_AGENT } from '../services/ebayService'
  * consent step), the header's "Browser" button and the failure card both fall back to an
  * in-app browser tab, so the user still never leaves the app.
  */
-export default function EbayCompsModal({ onClose, barcode, title, marketplace = 'CA' }) {
+export default function EbayCompsModal({ onClose, query, marketplace = 'CA' }) {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const webRef = useRef(null);
 
-  const url = getEbaySoldUrl(barcode, title, marketplace);
+  const url = getEbaySoldUrl(query, marketplace);
   const marketplaceLabel = marketplace === 'US' ? 'eBay.com' : 'eBay.ca';
 
   const openInBrowserTab = async () => {
@@ -76,7 +76,7 @@ export default function EbayCompsModal({ onClose, barcode, title, marketplace = 
           <Text style={styles.headerTitle}>eBay Sold Comps</Text>
           <Text style={styles.headerSub} numberOfLines={1}>
             {marketplaceLabel}
-            {barcode ? ` · ${barcode}` : ''}
+            {query ? ` · ${query}` : ''}
           </Text>
         </View>
 

@@ -14,12 +14,23 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { fetchEbaySoldLowest, launchEbaySold } from '../services/ebayService';
+import { buildEbayQuery } from '../services/ebayQuery';
 import EbayCompsModal from './EbayCompsModal';
 
 export default function ScanResultModal({ visible, item, onClose }) {
   const [copyFeedback, setCopyFeedback] = useState(null);
   const [ebayData, setEbayData] = useState({ loading: true, price: null, currencyPrefix: 'CDN$ ' });
   const [showEbayComps, setShowEbayComps] = useState(false);
+  // eBay sellers type a book's title, not its ISBN, so the title query is the default and the
+  // ISBN stays available for the listings that do quote a number. See services/ebayQuery.js.
+  const [ebaySearchMode, setEbaySearchMode] = useState('title');
+
+  const ebayQuery = buildEbayQuery({
+    barcode: item?.barcode,
+    title: item?.title,
+    author: item?.author,
+    prefer: ebaySearchMode
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -30,13 +41,19 @@ export default function ScanResultModal({ visible, item, onClose }) {
 
     setEbayData({ loading: true, price: null, currencyPrefix: item.currencyPrefix || (item.marketplace === 'US' ? '$' : 'CDN$ ') });
 
-    fetchEbaySoldLowest(item.barcode, item.title, item.marketplace)
+    fetchEbaySoldLowest({
+      barcode: item.barcode,
+      title: item.title,
+      author: item.author,
+      marketplace: item.marketplace
+    })
       .then((res) => {
         if (isMounted) {
           setEbayData({
             loading: false,
             price: res?.price || null,
-            currencyPrefix: res?.currencyPrefix || (item.marketplace === 'US' ? '$' : 'CDN$ ')
+            currencyPrefix: res?.currencyPrefix || (item.marketplace === 'US' ? '$' : 'CDN$ '),
+            matchedBy: res?.matchedBy || null
           });
         }
       })
@@ -49,7 +66,7 @@ export default function ScanResultModal({ visible, item, onClose }) {
     return () => {
       isMounted = false;
     };
-  }, [item?.barcode, item?.title, item?.marketplace]);
+  }, [item?.barcode, item?.title, item?.author, item?.marketplace]);
 
   // EVERY hook must be called above this guard. An early return placed between hooks means the
   // component runs a different number of them depending on whether `item` is set, and React
@@ -115,11 +132,16 @@ export default function ScanResultModal({ visible, item, onClose }) {
   };
 
   const handleOpenEbaySold = async () => {
-    const identifier = item.barcode || item.asin || item.title;
-    if (identifier) {
-      await copyToClipboard(identifier, 'ISBN/Barcode');
+    // Copy the search terms, not the ISBN: the terms are what the eBay app search box wants.
+    if (ebayQuery) {
+      await copyToClipboard(ebayQuery, 'Search terms');
     }
-    await launchEbaySold(item.barcode, item.title, item.marketplace);
+    await launchEbaySold({
+      barcode: item.barcode,
+      title: item.title,
+      author: item.author,
+      marketplace: item.marketplace
+    });
   };
 
   // The URL already carries the barcode/title, so there is nothing to copy first.
@@ -251,6 +273,29 @@ export default function ScanResultModal({ visible, item, onClose }) {
                 </TouchableOpacity>
               </View>
 
+              <View style={styles.ebayModeRow}>
+                <Text style={styles.ebayModeLabel}>Search by</Text>
+                <TouchableOpacity
+                  style={[styles.ebayModeBtn, ebaySearchMode === 'title' && styles.ebayModeBtnActive]}
+                  onPress={() => setEbaySearchMode('title')}
+                >
+                  <Text style={[styles.ebayModeText, ebaySearchMode === 'title' && styles.ebayModeTextActive]}>
+                    Title
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.ebayModeBtn, ebaySearchMode === 'barcode' && styles.ebayModeBtnActive]}
+                  onPress={() => setEbaySearchMode('barcode')}
+                >
+                  <Text style={[styles.ebayModeText, ebaySearchMode === 'barcode' && styles.ebayModeTextActive]}>
+                    ISBN
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.ebayQueryText} numberOfLines={1}>
+                🔎 {ebayQuery || 'no search terms available'}
+              </Text>
+
               {ebayData.loading ? (
                 <View style={styles.ebayLoadingRow}>
                   <ActivityIndicator size="small" color="#ECC94B" />
@@ -262,7 +307,9 @@ export default function ScanResultModal({ visible, item, onClose }) {
                     <Text style={styles.ebayPriceValue}>
                       {ebayData.currencyPrefix}{Number(ebayData.price).toFixed(2)}
                     </Text>
-                    <Text style={styles.ebayPriceSub}>Verified sold listing</Text>
+                    <Text style={styles.ebayPriceSub}>
+                      Lowest sold match ({ebayData.matchedBy === 'barcode' ? 'ISBN' : 'title'})
+                    </Text>
                   </View>
                   <TouchableOpacity style={styles.ebayActionBtn} onPress={handleOpenEbayComps}>
                     <Text style={styles.ebayActionBtnText}>⚡ View Sold Comps</Text>
@@ -346,8 +393,7 @@ export default function ScanResultModal({ visible, item, onClose }) {
         {showEbayComps ? (
           <EbayCompsModal
             onClose={() => setShowEbayComps(false)}
-            barcode={item.barcode}
-            title={item.title}
+            query={ebayQuery}
             marketplace={item.marketplace}
           />
         ) : null}
@@ -627,6 +673,41 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5
+  },
+  ebayModeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  ebayModeLabel: {
+    color: '#718096',
+    fontSize: 11,
+    fontWeight: '700',
+    marginRight: 8
+  },
+  ebayModeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#2D3748',
+    marginRight: 6
+  },
+  ebayModeBtnActive: {
+    backgroundColor: '#3182CE'
+  },
+  ebayModeText: {
+    color: '#A0AEC0',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  ebayModeTextActive: {
+    color: '#FFFFFF'
+  },
+  ebayQueryText: {
+    color: '#68D391',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 10
   },
   ebayQuickLinkBtn: {
     paddingVertical: 2,

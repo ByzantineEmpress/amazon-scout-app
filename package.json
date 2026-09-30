@@ -8,7 +8,7 @@
     "lan": "npm --prefix client run start:lan",
     "build:android": "npm --prefix client run build:android",
     "build:ios": "npm --prefix client run build:ios",
-    "test": "node client/test/gatingRules.test.mjs && node client/test/releaseSigning.test.mjs && node client/test/barcodeValidation.test.mjs && node client/test/isbn.test.mjs && node client/test/titleScan.test.mjs",
+    "test": "node client/test/gatingRules.test.mjs && node client/test/releaseSigning.test.mjs && node client/test/barcodeValidation.test.mjs && node client/test/isbn.test.mjs && node client/test/titleScan.test.mjs && node client/test/ebayQuery.test.mjs",
     "release": "node scripts/release.mjs"
   },
   "keywords": [
