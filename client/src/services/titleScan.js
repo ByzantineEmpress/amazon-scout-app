@@ -91,6 +91,9 @@ const ITEM_NOISE = [
   /^[\d\s\-().#/*+,]+$/, // digits and punctuation only: barcodes, phone numbers, model numbers
   /^[$€£]\s*\d+([.,]\d+)?$/, // a price
   /^(upc|ean|isbn|sku|mpn|model|item|lot|ref)\b/i,
+  // Compliance marks. Not a product name, and not a model number either - a photo of nothing but
+  // these should send the user to the label rather than searching for "EN71 ASTM F963 RoHS".
+  /^(en|astm|iso|fcc|rohs|ul|csa|sae|ansi|ce|weee|reach)[\s-]*[a-z]?\d*(\s+compliant)?$/i,
   /^[^A-Za-zÀ-ÿ]+$/ // nothing letter-like at all
 ];
 

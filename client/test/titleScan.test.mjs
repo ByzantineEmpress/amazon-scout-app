@@ -237,6 +237,19 @@ test('a model number is not appended to a descriptive name', () => {
   assertEqual(guessItemName(box), 'LEGO Star Wars Millennium Falcon', 'name left alone');
 });
 
+test('a photo of nothing but compliance marks reads as nothing', () => {
+  // Otherwise the query becomes "EN71 ASTM F963 RoHS", which finds neither the item nor anything
+  // else - the user should be sent to the label instead.
+  const marks = blockOf([
+    line('EN71', 10, 30),
+    line('ASTM F963', 50, 28),
+    line('RoHS Compliant', 90, 26),
+    line('CE', 130, 24)
+  ]);
+  assertEqual(guessItemName(marks), '', 'no name');
+  assertEqual(findModelNumber(marks), '', 'no model');
+});
+
 test('a model number is used alone when nothing else is readable', () => {
   const sticker = blockOf([line('CUH-ZCT2U', 10, 14)]);
   assertEqual(guessItemName(sticker), 'CUH-ZCT2U', 'model only');
