@@ -23,6 +23,7 @@ import HistoryModal from './src/components/HistoryModal';
 import OfflineQueueModal from './src/components/OfflineQueueModal';
 import ManualEntryModal from './src/components/ManualEntryModal';
 import IsbnScanModal from './src/components/IsbnScanModal';
+import ItemCompsModal from './src/components/ItemCompsModal';
 import { checkForUpdate } from './src/services/updateService';
 import {
   SCANNER_BARCODE_TYPES,
@@ -45,6 +46,7 @@ export default function App() {
   const [offlineVisible, setOfflineVisible] = useState(false);
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [isbnScanVisible, setIsbnScanVisible] = useState(false);
+  const [itemCompsVisible, setItemCompsVisible] = useState(false);
 
   // Camera focus & zoom
   const [autofocusMode, setAutofocusMode] = useState('on');
@@ -319,10 +321,10 @@ export default function App() {
         {/* Live Camera Viewfinder */}
         <View style={styles.cameraContainer}>
           {/* Only one camera can hold the device at a time: Android gives a second CameraView a
-              black preview rather than an error. The ISBN screen needs the camera, so this
-              preview unmounts while it is open. expo-camera's `active` prop would be tidier, but
-              it is iOS-only. The placeholder view keeps the layout from collapsing. */}
-          {isbnScanVisible ? (
+              black preview rather than an error. Both child screens need the camera, so this
+              preview unmounts while either is open. expo-camera's `active` prop would be tidier,
+              but it is iOS-only. The placeholder keeps the layout from collapsing. */}
+          {isbnScanVisible || itemCompsVisible ? (
             <View style={styles.camera} />
           ) : (
             <CameraView
@@ -391,22 +393,36 @@ export default function App() {
         <View style={styles.bottomBar}>
           <View style={styles.bottomBarRow}>
             <TouchableOpacity
-              style={[styles.manualEntryBtn, styles.bottomBarButtonFirst]}
+              style={[styles.manualEntryBtn, styles.bottomBarButtonSpaced]}
               onPress={() => setIsbnScanVisible(true)}
             >
-              <Text style={styles.manualEntryBtnText}>📖 Scan Printed ISBN</Text>
-              <Text style={styles.bottomBarSubText}>No barcode? Older books</Text>
+              <Text style={styles.manualEntryBtnText}>📖 Printed ISBN</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.manualEntryBtn, styles.bottomBarButtonSpaced]}
+              onPress={() => setItemCompsVisible(true)}
+            >
+              <Text style={styles.manualEntryBtnText}>📷 Photo Comps</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.manualEntryBtn}
               onPress={() => setManualModalVisible(true)}
             >
-              <Text style={styles.manualEntryBtnText}>⌨️ Type It In</Text>
-              <Text style={styles.bottomBarSubText}>10 or 13 digits</Text>
+              <Text style={styles.manualEntryBtnText}>⌨️ Type In</Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Photograph any item and look up its eBay sold comps. Nothing is written to History:
+            this is a lookup, not a scan. */}
+        {itemCompsVisible ? (
+          <ItemCompsModal
+            onClose={() => setItemCompsVisible(false)}
+            marketplace={settings.marketplace || 'CA'}
+          />
+        ) : null}
 
         {/* Read a book with no barcode: printed ISBN, or title for pre-1970 books.
             Mounted only while open, so each visit starts from fresh state. */}
@@ -689,14 +705,8 @@ const styles = StyleSheet.create({
   bottomBarRow: {
     flexDirection: 'row'
   },
-  bottomBarButtonFirst: {
-    flex: 1,
-    marginRight: 10
-  },
-  bottomBarSubText: {
-    color: '#A0AEC0',
-    fontSize: 11,
-    marginTop: 3
+  bottomBarButtonSpaced: {
+    marginRight: 8
   },
   manualEntryBtn: {
     flex: 1,
@@ -709,7 +719,8 @@ const styles = StyleSheet.create({
   },
   manualEntryBtnText: {
     color: '#E2E8F0',
-    fontSize: 15,
-    fontWeight: '700'
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center'
   }
 });

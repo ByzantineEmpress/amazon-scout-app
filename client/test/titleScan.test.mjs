@@ -37,8 +37,8 @@ function assertEqual(actual, expected, label) {
 
 // titleScan.js has no imports, so its source can be evaluated after dropping `export`.
 const source = fs.readFileSync(path.join(here, '..', 'src', 'services', 'titleScan.js'), 'utf8');
-const { linesFromBlocks, guessTitleAndAuthor } = new Function(
-  `${source.replace(/^export /gm, '')}\nreturn { linesFromBlocks, guessTitleAndAuthor };`
+const { linesFromBlocks, guessTitleAndAuthor, guessItemName, cleanItemText } = new Function(
+  `${source.replace(/^export /gm, '')}\nreturn { linesFromBlocks, guessTitleAndAuthor, guessItemName, cleanItemText };`
 )();
 
 /** Build a block array the way the OCR module shapes one. */
@@ -117,6 +117,73 @@ test('linesFromBlocks skips blanks and survives odd shapes', () => {
   assertEqual(linesFromBlocks(null).length, 0, 'null');
   assertEqual(linesFromBlocks([{ lines: [{ text: '  ' }, { text: 'ok' }] }]).length, 1, 'blanks skipped');
   assertEqual(linesFromBlocks([{}, { lines: [{ text: 'ok' }] }]).length, 1, 'block without lines');
+});
+
+// --- guessing an item name from packaging ------------------------------------
+
+test('a box reads as brand, product and sub-name in reading order', () => {
+  // The shape of a toy box front: the product name large, the small print everywhere.
+  const box = blockOf([
+    line('LEGO', 10, 60),
+    line('Star Wars', 80, 55),
+    line('Millennium Falcon', 145, 50),
+    line('AGES 8+', 400, 30),
+    line('613 pcs', 430, 28),
+    line('MADE IN CHINA', 460, 24),
+    line('www.lego.com', 490, 22),
+    line('WARNING: CHOKING HAZARD', 520, 26)
+  ]);
+  assertEqual(guessItemName(box), 'LEGO Star Wars Millennium Falcon', 'name');
+});
+
+test('a warning bigger than the product name does not win', () => {
+  // Safety text is often set large; it is still not what the item is called.
+  const toy = blockOf([
+    line('WARNING: CHOKING HAZARD - Small parts', 5, 70),
+    line('NERF N-Strike Elite', 100, 45),
+    line('Ages 6+', 160, 20)
+  ]);
+  assertEqual(guessItemName(toy), 'NERF N-Strike Elite', 'name');
+});
+
+test('numbers, prices and codes alone yield nothing', () => {
+  // Better to prefill an empty box than to search for a barcode.
+  const codes = blockOf([
+    line('0 12345 67890 5', 10, 40),
+    line('$19.99', 60, 30),
+    line('UPC 012345678905', 100, 25)
+  ]);
+  assertEqual(guessItemName(codes), '', 'no name');
+});
+
+test('small print is not mistaken for a product name', () => {
+  const item = blockOf([line('Vintage Camera', 100, 20), line('Tested Working', 130, 8)]);
+  assertEqual(guessItemName(item), 'Vintage Camera', 'only the prominent line');
+});
+
+test('a sub-name joins when it is set at a similar size', () => {
+  const game = blockOf([line('MONOPOLY', 20, 65), line('Classic Edition', 100, 40)]);
+  assertEqual(guessItemName(game), 'MONOPOLY Classic Edition', 'joined');
+});
+
+test('trademark marks are stripped, other punctuation is kept', () => {
+  const box = blockOf([line('FUNKO®', 10, 50), line('POP! Vinyl', 70, 45)]);
+  assertEqual(guessItemName(box), 'FUNKO POP! Vinyl', 'marks removed');
+  assertEqual(cleanItemText('  ™  '), '', 'nothing left');
+});
+
+test('a very long single line is capped rather than discarded', () => {
+  const long = blockOf([line(`Ultra ${'x'.repeat(120)}`, 10, 50)]);
+  const guess = guessItemName(long);
+  if (guess.length === 0 || guess.length > 70) {
+    throw new Error(`expected a capped name, got length ${guess.length}`);
+  }
+});
+
+test('nothing usable yields an empty name', () => {
+  for (const input of [[], null, undefined, [{ lines: [] }], [{ lines: [{ text: '   ' }] }]]) {
+    assertEqual(guessItemName(input), '', `name for ${JSON.stringify(input)}`);
+  }
 });
 
 console.log('');

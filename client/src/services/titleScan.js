@@ -62,3 +62,86 @@ export function guessTitleAndAuthor(blocks) {
     author: authorLine ? authorLine.text.replace(AUTHOR_PREFIX, '').trim() : ''
   };
 }
+
+/**
+ * Packaging text that describes the object rather than the product: warnings, age ratings,
+ * quantities, import marks, prices, barcodes and web addresses. On a typical box this is most of
+ * the text, and none of it belongs in a search.
+ *
+ * The marketing words are anchored to a whole line on purpose - "NEW!" is noise, but "New
+ * Balance" is a brand.
+ */
+const ITEM_NOISE = [
+  /^(ages?|age)\s*\d/i,
+  /^\d+\s*(\+|years?|yrs?|months?|mths?|pieces?|pcs?|count|ct)\b/i,
+  /\bwarning\b/i,
+  /\bchoking hazard\b/i,
+  /\bbatteries\b/i,
+  /\bnot included\b/i,
+  /\bmade in\b/i,
+  /\bkeep away from\b/i,
+  /\bdo not\b/i,
+  /\bpatent(ed| pending)?\b/i,
+  /\bsee (back|bottom|inside|reverse)\b/i,
+  /\bout of 5\b/i,
+  /^(new|hot|sale|free|bonus|best seller|as seen on tv)[!.\s]*$/i,
+  /\bwww\./i,
+  /\.(com|ca|net|org)\b/i,
+  /^https?:/i,
+  /^[\d\s\-().#/*+,]+$/, // digits and punctuation only: barcodes, phone numbers, model numbers
+  /^[$€£]\s*\d+([.,]\d+)?$/, // a price
+  /^(upc|ean|isbn|sku|mpn|model|item|lot|ref)\b/i,
+  /^[^A-Za-zÀ-ÿ]+$/ // nothing letter-like at all
+];
+
+function isItemNoise(text) {
+  if (text.length < 2) return true;
+  return ITEM_NOISE.some((pattern) => pattern.test(text));
+}
+
+/** Drop the marks that would only get in a search engine's way. */
+export function cleanItemText(raw) {
+  return String(raw ?? '')
+    .replace(/[®™©]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s\-–—•*:,.|/]+|[\s\-–—•*:,.|/]+$/g, '')
+    .trim();
+}
+
+/**
+ * Guess what an item is called, from text recognised on its packaging.
+ *
+ * Same principle as the book guesser above, different furniture: a product name is set larger
+ * than the small print around it, and packaging announces it as "BRAND Product Name", so the
+ * prominent lines are read in reading order and joined. Used to prefill a search box for eBay
+ * sold comps, and the field is editable, so a good first guess is the whole goal.
+ */
+export function guessItemName(blocks) {
+  const lines = linesFromBlocks(blocks)
+    .map((line) => ({ ...line, text: cleanItemText(line.text) }))
+    .filter((line) => !isItemNoise(line.text));
+  if (lines.length === 0) return '';
+
+  const tallest = Math.max(...lines.map((line) => line.height)) || 1;
+
+  // Prominent lines only, then back into reading order - packaging reads top to bottom.
+  const prominent = lines
+    .filter((line) => line.height >= tallest * 0.55)
+    .sort((a, b) => b.height - a.height || a.top - b.top)
+    .slice(0, 3)
+    .sort((a, b) => a.top - b.top);
+
+  const parts = [];
+  for (const line of prominent) {
+    if (!line.text) continue;
+    if (parts.length === 0) {
+      parts.push(line.text);
+      continue;
+    }
+    // Stop adding once the phrase gets long: eBay ANDs the terms, so a rambling query finds less.
+    if ([...parts, line.text].join(' ').length > 50) break;
+    parts.push(line.text);
+  }
+
+  return parts.join(' ').slice(0, 70).trim();
+}

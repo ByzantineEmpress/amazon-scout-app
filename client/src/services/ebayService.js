@@ -91,6 +91,32 @@ export async function fetchEbaySoldLowest({ barcode, title, author, marketplace 
 }
 
 /**
+ * The lowest sold price for a raw search phrase.
+ *
+ * Used by the photo comps tool, where the terms are read off an item rather than taken from a
+ * catalogue title. The phrase is used exactly as given: there is no catalogue title here, so
+ * running it through the title cleaner would be wrong.
+ */
+export async function fetchEbayLowestForQuery(query, marketplace = 'CA') {
+  const currencyPrefix = marketplace === 'US' ? '$' : 'CDN$ ';
+  const phrase = String(query ?? '').trim();
+  const soldUrl = getEbaySoldUrl(phrase, marketplace);
+
+  if (phrase) {
+    try {
+      const hit = await scrapeLowestSold(phrase, marketplace);
+      if (hit) {
+        return { success: true, soldUrl, currencyPrefix, price: hit.price, count: hit.count };
+      }
+    } catch (_e) {
+      // eBay challenges unauthenticated scrapers routinely; the pane behind the button still works.
+    }
+  }
+
+  return { success: false, soldUrl, currencyPrefix, price: null };
+}
+
+/**
  * One-tap handoff: copies the search terms (not the ISBN, which is rarely in a listing) and
  * opens the eBay app, falling back to a browser.
  */
