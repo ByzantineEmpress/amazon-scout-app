@@ -143,5 +143,76 @@ export function guessItemName(blocks) {
     parts.push(line.text);
   }
 
-  return parts.join(' ').slice(0, 70).trim();
+  const name = parts.join(' ').slice(0, 70).trim();
+
+  // A model number is the most useful handle on a bare device, but eBay ANDs its terms: adding
+  // one to an already-descriptive name risks excluding every listing that omits it. So it is
+  // only folded in when the name is a single word - which on an unbranded box is often just the
+  // maker - or missing altogether. Otherwise the UI offers it as a separate tap.
+  const model = findModelNumber(blocks);
+  const words = name ? name.split(/\s+/).filter(Boolean).length : 0;
+  if (model && words <= 1 && !name.includes(model)) {
+    return [name, model].filter(Boolean).join(' ');
+  }
+  return name;
+}
+
+/** A line that names the model outright. The value is what matters, not the label. */
+const MODEL_LABEL =
+  /^(?:model(?:\s*(?:no|number|#)\.?)?|mod\.?|m\/n|type|prod(?:uct)?\s*(?:no|#)\.?)\s*[:#]?\s*(.+)$/i;
+
+/** Compliance marks read like model numbers. EN71 and friends are not search terms. */
+const STANDARD_PREFIX = /^(en|astm|iso|fcc|rohs|ul|csa|sae|ansi|ce)\s?-?\s?\d/i;
+
+/**
+ * A value that is an instruction rather than a model. The full noise list cannot be used here:
+ * it rejects anything numeric, and "Model 1914" is a perfectly good model number.
+ */
+const MODEL_VALUE_NOISE = /\bsee\b|\bn\/?a\b|^none$/i;
+
+/**
+ * A model designator is one token mixing letters and digits: CFI-ZCT1W, HAC-001, WH-1000XM4.
+ * Packaging is full of four-character standards that look similar, so a token has to be long
+ * enough to be plausible, and the standards are excluded by name.
+ */
+function isModelToken(text) {
+  const token = text.trim();
+  if (token.length < 6 || token.length > 20) return false;
+  if (!/^[A-Za-z0-9][A-Za-z0-9\-/._]*$/.test(token)) return false;
+  if (!/[A-Za-z]/.test(token) || !/\d/.test(token)) return false;
+  if (STANDARD_PREFIX.test(token)) return false;
+  return !ITEM_NOISE.some((pattern) => pattern.test(token));
+}
+
+/**
+ * Find the model number on the item.
+ *
+ * This is the answer for things with no name to read - a controller, a camera body, a drill, a
+ * pair of headphones. Such an object may carry no product name at all, but it very often carries
+ * a model number, and that is exactly how used gear is listed and searched on eBay.
+ *
+ * Small print is deliberately included here: model numbers are usually the least prominent text
+ * on the object, tucked on a sticker underneath.
+ */
+export function findModelNumber(blocks) {
+  const lines = linesFromBlocks(blocks).map((line) => ({ ...line, text: cleanItemText(line.text) }));
+
+  // An explicit "Model:" label is trusted, even when the value is a plain number ("Model 1914").
+  for (const line of lines) {
+    const match = line.text.match(MODEL_LABEL);
+    if (!match) continue;
+    const value = cleanItemText(match[1]);
+    if (value.length >= 3 && value.length <= 24 && !MODEL_VALUE_NOISE.test(value)) {
+      return value;
+    }
+  }
+
+  // Otherwise the most prominent token that looks like one.
+  for (const line of [...lines].sort((a, b) => b.height - a.height)) {
+    for (const token of line.text.split(/\s+/)) {
+      if (isModelToken(token)) return token;
+    }
+  }
+
+  return '';
 }

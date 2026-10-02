@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { CameraView, scanFromURLAsync } from 'expo-camera';
 import { File } from 'expo-file-system';
-import { guessItemName } from '../services/titleScan';
+import { guessItemName, findModelNumber } from '../services/titleScan';
 import { processBarcodeScanOnDevice } from '../services/barcodeService';
 import { validateScannedCode, SCANNER_BARCODE_TYPES } from '../services/barcodeValidation';
 import { fetchEbayLowestForQuery } from '../services/ebayService';
@@ -61,6 +61,7 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
   const [phase, setPhase] = useState('ready'); // ready | reading | found
   const [query, setQuery] = useState('');
   const [decodedCode, setDecodedCode] = useState('');
+  const [model, setModel] = useState('');
   const [status, setStatus] = useState('Frame the item, then take the picture');
   const [lowest, setLowest] = useState(null);
   const [looking, setLooking] = useState(false);
@@ -69,6 +70,15 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
   const [cameraArmed, setCameraArmed] = useState(false);
 
   const cameraRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // When nothing could be read, the field is the way forward, so put the cursor in it. Only when
+  // it is empty - opening the keyboard over a good guess would hide the search button for nothing.
+  useEffect(() => {
+    if (phase !== 'found' || query.trim()) return undefined;
+    const id = setTimeout(() => inputRef.current?.focus(), 300);
+    return () => clearTimeout(id);
+  }, [phase, query]);
 
   // Mount the camera a beat late: the main viewfinder unmounts in the same React commit as this
   // screen mounts, and Android returns a black preview if a second camera grabs the device while
@@ -139,6 +149,9 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
 
   const nameTheItem = async (code, blocks) => {
     const fromPackaging = guessItemName(blocks);
+    // Read separately from the name: on a loose device this is the whole answer, and it is worth
+    // offering as its own search even when a name was also read.
+    const readModel = findModelNumber(blocks);
 
     // A barcode names the item exactly, so it is worth asking the catalogue before settling for
     // what was read off the box.
@@ -160,14 +173,15 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
 
     const best = fromBarcode || fromPackaging;
     setDecodedCode(code || '');
+    setModel(readModel);
     setQuery(best);
     setPhase('found');
     setStatus(
       best
         ? fromBarcode
           ? 'Named from the barcode — check it, then search'
-          : 'Read from the packaging — check it, then search'
-        : 'Nothing readable on that — type what it is'
+          : 'Read from the item — check it, then search'
+        : 'No text found — try the label on the back or underside'
     );
 
     if (best) runLookup(best);
@@ -250,15 +264,23 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
                 <View>
                   <Text style={styles.fieldLabel}>Search eBay sold listings for</Text>
                   <TextInput
+                    ref={inputRef}
                     style={styles.input}
                     value={query}
                     onChangeText={setQuery}
-                    placeholder="e.g. Lego Millennium Falcon"
+                    placeholder="Type what the item is"
                     placeholderTextColor="#718096"
                     autoCorrect={false}
                     returnKeyType="search"
                     onSubmitEditing={search}
                   />
+
+                  {model && model === query.trim() ? (
+                    <Text style={styles.helpText}>
+                      Only a model number was readable. Gear is listed by model number, so this
+                      works well on its own — add a brand if the results look too broad.
+                    </Text>
+                  ) : null}
 
                   <TouchableOpacity
                     style={[styles.searchBtn, !query.trim() && styles.btnDisabled]}
@@ -298,6 +320,20 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
                       }}
                     >
                       <Text style={styles.codeChipText}>Barcode read: {decodedCode} — tap to search it instead</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {model && model !== query.trim() ? (
+                    <TouchableOpacity
+                      style={styles.codeChip}
+                      onPress={() => {
+                        setQuery(model);
+                        runLookup(model);
+                      }}
+                    >
+                      <Text style={styles.codeChipText}>
+                        Model read: {model} — tap to search just the model
+                      </Text>
                     </TouchableOpacity>
                   ) : null}
 
@@ -382,6 +418,7 @@ const styles = StyleSheet.create({
   readingText: { color: '#A0AEC0', fontSize: 13, fontWeight: '700', marginLeft: 8 },
 
   fieldLabel: { color: '#A0AEC0', fontSize: 12, fontWeight: '700', marginBottom: 4 },
+  helpText: { color: '#A0AEC0', fontSize: 12, lineHeight: 17, marginBottom: 10 },
   input: {
     backgroundColor: '#1A202C',
     color: '#F8FAFC',

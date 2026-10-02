@@ -37,8 +37,8 @@ function assertEqual(actual, expected, label) {
 
 // titleScan.js has no imports, so its source can be evaluated after dropping `export`.
 const source = fs.readFileSync(path.join(here, '..', 'src', 'services', 'titleScan.js'), 'utf8');
-const { linesFromBlocks, guessTitleAndAuthor, guessItemName, cleanItemText } = new Function(
-  `${source.replace(/^export /gm, '')}\nreturn { linesFromBlocks, guessTitleAndAuthor, guessItemName, cleanItemText };`
+const { linesFromBlocks, guessTitleAndAuthor, guessItemName, cleanItemText, findModelNumber } = new Function(
+  `${source.replace(/^export /gm, '')}\nreturn { linesFromBlocks, guessTitleAndAuthor, guessItemName, cleanItemText, findModelNumber };`
 )();
 
 /** Build a block array the way the OCR module shapes one. */
@@ -184,6 +184,62 @@ test('nothing usable yields an empty name', () => {
   for (const input of [[], null, undefined, [{ lines: [] }], [{ lines: [{ text: '   ' }] }]]) {
     assertEqual(guessItemName(input), '', `name for ${JSON.stringify(input)}`);
   }
+});
+
+// --- model numbers, for items with no name to read ---------------------------
+
+test('a labelled model number is taken even when it is only digits', () => {
+  // "Model 1914" is a real Xbox controller revision, and it is how the listing is titled.
+  assertEqual(findModelNumber(blockOf([line('Model No. 1914', 10, 30)])), '1914', 'labelled number');
+  assertEqual(findModelNumber(blockOf([line('MODEL: CUH-ZCT2U', 10, 30)])), 'CUH-ZCT2U', 'labelled code');
+  assertEqual(findModelNumber(blockOf([line('M/N: CFI-ZCT1W', 10, 30)])), 'CFI-ZCT1W', 'm/n form');
+});
+
+test('an unlabelled model number is found in the small print', () => {
+  // The usual place: a sticker on the underside, set far smaller than everything else.
+  const controller = blockOf([
+    line('SONY', 10, 60),
+    line('MADE IN CHINA', 400, 14),
+    line('CFI-ZCT1W', 430, 12),
+    line('DC 5V 800mA', 460, 12)
+  ]);
+  assertEqual(findModelNumber(controller), 'CFI-ZCT1W', 'small print wins over nothing');
+});
+
+test('compliance marks are not mistaken for model numbers', () => {
+  const box = blockOf([line('EN71', 10, 30), line('ASTM F963', 50, 28), line('RoHS', 90, 26)]);
+  assertEqual(findModelNumber(box), '', 'standards rejected');
+});
+
+test('a label pointing elsewhere is not a model number', () => {
+  assertEqual(findModelNumber(blockOf([line('MODEL: SEE BOTTOM', 10, 30)])), '', 'no value');
+  assertEqual(findModelNumber(blockOf([])), '', 'nothing');
+  assertEqual(findModelNumber(null), '', 'null');
+});
+
+test('a bare device reads as maker plus model, which is what a listing looks like', () => {
+  // No product name anywhere: a logo and a sticker is all a loose controller offers.
+  const controller = blockOf([
+    line('SONY', 10, 60),
+    line('CUH-ZCT2U', 430, 12)
+  ]);
+  assertEqual(guessItemName(controller), 'SONY CUH-ZCT2U', 'maker and model');
+});
+
+test('a model number is not appended to a descriptive name', () => {
+  // eBay ANDs its terms, so an extra token could exclude every listing that omits it.
+  const box = blockOf([
+    line('LEGO', 10, 60),
+    line('Star Wars', 80, 55),
+    line('Millennium Falcon', 145, 50),
+    line('EN71', 400, 30)
+  ]);
+  assertEqual(guessItemName(box), 'LEGO Star Wars Millennium Falcon', 'name left alone');
+});
+
+test('a model number is used alone when nothing else is readable', () => {
+  const sticker = blockOf([line('CUH-ZCT2U', 10, 14)]);
+  assertEqual(guessItemName(sticker), 'CUH-ZCT2U', 'model only');
 });
 
 console.log('');
