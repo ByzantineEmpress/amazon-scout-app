@@ -258,6 +258,117 @@ async function fetchUPCItemDb(barcode) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Amazon product detail page: the real offer list
+//
+// The search-page scrape (above) gives the buy box and the "Used & New from $X" snippet, which
+// are useful but partial: they are what Amazon chose to surface in search, not the full offer
+// list. The product detail page (`/dp/ASIN`) carries the actual offers — Amazon's own price,
+// the lowest used, the offer count, and the sales rank — which is what a reseller needs to
+// decide whether an item is worth picking up.
+//
+// This is the keyless equivalent of what the paid scouting apps (Scoutly, ScoutIQ, Profit
+// Bandit) show, scraped straight from the detail page rather than via SP-API / PA-API. It is
+// best-effort by design: Amazon changes its markup frequently, and a failure here must never
+// take down a scan (invariant §4.6). The search scrape already degrades to null on failure;
+// this one does the same, and callers treat a null as "offer list unavailable" and fall back
+// to the search-snippet prices.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Scrape the Amazon product detail page for the real offer list.
+ *
+ * @param {string} asin  The ASIN from the search scrape.
+ * @param {string} marketplace  'CA' or 'US'.
+ * @returns {Promise<{
+ *   newPrice: ?number,
+ *   lowestUsed: ?number,
+ *   soldByAmazon: boolean,
+ *   salesRank: ?string,
+ *   offerCount: ?number
+ * }>}  Always resolves; never throws. Returns null values when a field is not present.
+ */
+export async function fetchAmazonOfferList(asin, marketplace = 'CA') {
+  if (!asin || typeof asin !== 'string' || asin.length < 5) return null;
+  const domain = marketplace === 'US' ? 'amazon.com' : 'amazon.ca';
+  const url = `https://www.${domain}/dp/${encodeURIComponent(asin)}?th=1&psc=1`;
+
+  try {
+    const res = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': marketplace === 'US' ? 'en-US,en;q=0.9' : 'en-CA,en-US;q=0.9,en;q=0.8'
+      },
+      timeout: 4500
+    });
+
+    const html = typeof res.data === 'string' ? res.data : '';
+    if (html.length < 5000) return null;
+
+    const result = {
+      newPrice: null,
+      lowestUsed: null,
+      soldByAmazon: false,
+      salesRank: null,
+      offerCount: null
+    };
+
+    // New price: the buy box "priceToPay" / "a-price" on the detail page. This is Amazon's
+    // own listed price when Amazon is the seller, or the lowest new offer otherwise.
+    const priceToPay = html.match(
+      /priceToPay[^>]*>[\s\S]{0,400}?priceAmount[^>]*>(?:<[^>]+>)*([\d,]+\.?\d{0,2})/
+    );
+    if (priceToPay) {
+      const v = parseFloat(priceToPay[1].replace(/,/g, ''));
+      if (Number.isFinite(v)) result.newPrice = v;
+    }
+    if (result.newPrice == null) {
+      const corePrice = html.match(
+        /<span class="a-price"[^>]*>[\s\S]{0,300}?a-offscreen>\$([\d,]+\.?\d{0,2})/
+      );
+      if (corePrice) {
+        const v = parseFloat(corePrice[1].replace(/,/g, ''));
+        if (Number.isFinite(v)) result.newPrice = v;
+      }
+    }
+
+    // Lowest used: the "From $X" in the "Used & New" buy box section on the detail page.
+    const fromUsed = html.match(/From[\s\S]{0,120}?\$([\d,]+\.?\d{0,2})/);
+    if (fromUsed) {
+      const v = parseFloat(fromUsed[1].replace(/,/g, ''));
+      if (Number.isFinite(v)) result.lowestUsed = v;
+    }
+
+    // Offer count: "N used & new offers" or "N offers".
+    const offerCount = html.match(/(\d+)\s+used\s*&\s*new\s+offers?/i) ||
+                       html.match(/(\d+)\s+offers?[\s\S]{0,40}?from\s+\$?/i);
+    if (offerCount) {
+      const n = parseInt(offerCount[1], 10);
+      if (Number.isFinite(n) && n > 0) result.offerCount = n;
+    }
+
+    // Sales rank: "Amazon Best Sellers Rank: #N in Category".
+    const rank = html.match(
+      /Amazon Best Sellers Rank:[\s\S]{0,200}?#([\d,]+)[\s\S]{0,80}?in\s+([^<\n]+)/
+    );
+    if (rank) {
+      const category = rank[2].replace(/<[^>]+>/g, '').trim().slice(0, 60);
+      result.salesRank = `#${rank[1]} in ${category}`;
+    }
+
+    // Sold by Amazon: the detail page shows "Ships from & Sold by Amazon" when Amazon is the
+    // seller of the buy box offer.
+    result.soldByAmazon = /Sold by[\s\S]{0,80}?Amazon/i.test(html) &&
+                          /Ships from[\s\S]{0,80}?Amazon/i.test(html);
+
+    return result;
+  } catch (e) {
+    // Degrade, never throw (§4.6). A detail-page failure must not crash the scan.
+    return null;
+  }
+}
+
 /**
  * Main On-Device Scan Resolution
  * Completely serverless - executes 100% on phone
@@ -315,6 +426,15 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       ? (amz.isUsFallback ? 'Amazon.com (est. CAD)' : (isCanada ? 'Amazon.ca' : 'Amazon.com'))
       : (abe?.usedMin ? 'AbeBooks / Used Market' : null);
 
+    // Real offer list from the product detail page. This is the "exact Amazon pricing" the
+    // paid scouting apps show: the actual buy box price, lowest used, offer count, and sales
+    // rank, scraped from /dp/ASIN rather than the search snippet. It degrades to null on any
+    // failure (§4.6) and is shown alongside — never instead of — the search-snippet prices.
+    const asinForDetail = amz?.asin || computedAsin;
+    const offerList = asinForDetail
+      ? await (fetchAmazonOfferList(asinForDetail, marketplace).then((r) => r).catch(() => null))
+      : null;
+
     // 3. Evaluate restrictions on-device
     const restriction = evaluateRestrictions({
       title,
@@ -362,6 +482,12 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       usedBuyBox: buyBox,
       usedOffers: null,
       priceSource,
+      // Real offer list from the product detail page (the "exact Amazon pricing").
+      newPrice: offerList?.newPrice ?? null,
+      lowestUsed: offerList?.lowestUsed ?? null,
+      soldByAmazon: offerList?.soldByAmazon ?? false,
+      salesRank: offerList?.salesRank ?? null,
+      offerCount: offerList?.offerCount ?? null,
       sellerCentralUrl,
       amazonProductUrl,
       timestamp: Date.now()

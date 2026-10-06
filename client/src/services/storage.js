@@ -10,7 +10,10 @@ const DEFAULT_SETTINGS = {
   marketplace: 'CA', // Default to Amazon Canada (Amazon.ca)
   soundEnabled: true,
   vibrationEnabled: true,
-  scanCooldownMs: 1500
+  scanCooldownMs: 1500,
+  // Case/carton (ITF-14) codes are excluded from the default scan set: they are the "scanned a
+  // case, got the wrong item" class of false read. Enable in Settings to scan multi-packs.
+  scanItf14: false
 };
 
 export async function getSettings() {

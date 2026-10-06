@@ -225,7 +225,46 @@ export default function ScanResultModal({ visible, item, onClose }) {
               <Text style={styles.sectionHeader}>
                 Used Pricing ({item.marketplace === 'US' ? 'Amazon.com 🇺🇸' : 'Amazon.ca 🇨🇦'})
               </Text>
-              
+
+              {/* Real offer list from the Amazon product detail page — the "exact Amazon
+                  pricing" the paid scouting apps show. Shown alongside the search-snippet
+                  prices, never instead of them, and only when the detail scrape returned
+                  something. */}
+              {(item.newPrice != null || item.lowestUsed != null || item.salesRank || item.offerCount != null) ? (
+                <View style={styles.offerCard}>
+                  <Text style={styles.offerCardTitle}>
+                    🏷️ Live Amazon Offers {item.soldByAmazon ? '• Sold by Amazon' : ''}
+                  </Text>
+                  <View style={styles.offerRow}>
+                    {item.newPrice != null ? (
+                      <View style={styles.offerCell}>
+                        <Text style={styles.offerCellLabel}>New / Buy Box</Text>
+                        <Text style={styles.offerCellPrice}>
+                          {item.currencyPrefix}{Number(item.newPrice).toFixed(2)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {item.lowestUsed != null ? (
+                      <View style={styles.offerCell}>
+                        <Text style={styles.offerCellLabel}>Lowest Used</Text>
+                        <Text style={styles.offerCellPrice}>
+                          {item.currencyPrefix}{Number(item.lowestUsed).toFixed(2)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {item.offerCount != null ? (
+                      <View style={styles.offerCell}>
+                        <Text style={styles.offerCellLabel}>Offers</Text>
+                        <Text style={styles.offerCellPrice}>{item.offerCount}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  {item.salesRank ? (
+                    <Text style={styles.offerRank}>📊 {item.salesRank}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
               {item.usedMin || item.usedBuyBox ? (
                 <>
                   <View style={styles.priceGrid}>
@@ -576,6 +615,50 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     marginTop: 6
+  },
+  offerCard: {
+    backgroundColor: '#EBF8FF',
+    borderColor: '#3182CE',
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12
+  },
+  offerCardTitle: {
+    color: '#2B6CB0',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 10
+  },
+  offerRow: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  offerCell: {
+    flex: 1,
+    backgroundColor: 'rgba(49, 130, 206, 0.08)',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center'
+  },
+  offerCellLabel: {
+    color: '#4A5568',
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 3
+  },
+  offerCellPrice: {
+    color: '#2C5282',
+    fontSize: 16,
+    fontWeight: '800'
+  },
+  offerRank: {
+    color: '#4A5568',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 10,
+    lineHeight: 15
   },
   livePriceQuickBtn: {
     backgroundColor: 'rgba(72, 187, 120, 0.15)',

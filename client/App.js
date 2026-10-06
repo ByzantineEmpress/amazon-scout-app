@@ -27,6 +27,7 @@ import ItemCompsModal from './src/components/ItemCompsModal';
 import { checkForUpdate } from './src/services/updateService';
 import {
   SCANNER_BARCODE_TYPES,
+  DEFAULT_SCANNER_BARCODE_TYPES,
   validateScannedCode,
   confirmScan,
   EMPTY_CONFIRMATION
@@ -59,7 +60,8 @@ export default function App() {
     marketplace: 'CA',
     soundEnabled: true,
     vibrationEnabled: true,
-    scanCooldownMs: 1500
+    scanCooldownMs: 1500,
+    scanItf14: false
   });
   const [offlineCount, setOfflineCount] = useState(0);
   const [hasUpdate, setHasUpdate] = useState(false);
@@ -71,6 +73,20 @@ export default function App() {
   // visibly not being ignored.
   const scanConfirmRef = useRef(EMPTY_CONFIRMATION);
   const [pendingCode, setPendingCode] = useState('');
+  // Brief "rejected" toast: shown when a scan is dropped by the validation gate, so false reads
+  // are visible to the user instead of silently eaten.
+  const [rejectedCode, setRejectedCode] = useState(null);
+  const rejectionTimeoutRef = useRef(null);
+
+  // Resolve the barcode symbologies to enable from settings. ITF-14 (case/carton codes) is off
+  // by default and toggled in Settings; it is the "scanned a case, got the wrong item" class.
+  const activeBarcodeTypes = settings.scanItf14 ? SCANNER_BARCODE_TYPES : DEFAULT_SCANNER_BARCODE_TYPES;
+
+  const flashRejection = (code) => {
+    setRejectedCode(code);
+    if (rejectionTimeoutRef.current) clearTimeout(rejectionTimeoutRef.current);
+    rejectionTimeoutRef.current = setTimeout(() => setRejectedCode(null), 1500);
+  };
 
   useEffect(() => {
     initApp();
@@ -109,7 +125,7 @@ export default function App() {
     }
   };
 
-  const handleBarcodeScanned = async ({ data }) => {
+  const handleBarcodeScanned = async ({ data, bounds }) => {
     if (!scanningActive || loading) return;
 
     // 1. Only product barcodes get past this. A QR code or an asset tag would otherwise have
@@ -118,12 +134,16 @@ export default function App() {
     if (!verdict.ok) {
       scanConfirmRef.current = EMPTY_CONFIRMATION;
       if (pendingCode) setPendingCode('');
+      // Show a brief "rejected" toast so the user knows the scan was dropped, not ignored.
+      flashRejection(String(data || '').slice(0, 20));
       return;
     }
 
-    // 2. Require the same code on consecutive frames, so a single-frame misread cannot trigger
-    //    a lookup. One extra frame is imperceptible but removes most bad reads.
-    const step = confirmScan(scanConfirmRef.current, verdict.code);
+    // 2. Require the same code, in the same place, within the confirmation window. The
+    //    time-windowed, spatially stable gate stops a steady misread (or a steady *other*
+    //    barcode in the frame) from ever being accepted.
+    const now = Date.now();
+    const step = confirmScan(scanConfirmRef.current, verdict.code, now, bounds);
     scanConfirmRef.current = step.state;
     if (!step.accept) {
       if (pendingCode !== verdict.code) setPendingCode(verdict.code);
@@ -131,7 +151,6 @@ export default function App() {
     }
 
     const code = verdict.code;
-    const now = Date.now();
 
     // 3. Debounce an immediate re-scan of the same code (e.g. straight after closing the card).
     if (code === lastBarcode.current && now - lastScannedTime.current < (settings.scanCooldownMs || 1500)) {
@@ -334,7 +353,7 @@ export default function App() {
               autofocus={autofocusMode}
               zoom={zoom}
               barcodeScannerSettings={{
-                barcodeTypes: SCANNER_BARCODE_TYPES
+                barcodeTypes: activeBarcodeTypes
               }}
               onBarcodeScanned={scanningActive ? handleBarcodeScanned : undefined}
               onMountError={(err) => {
@@ -385,6 +404,12 @@ export default function App() {
             <View style={styles.loadingOverlay}>
               <ActivityIndicator size="large" color="#48BB78" />
               <Text style={styles.loadingText}>Looking up item & prices...</Text>
+            </View>
+          ) : rejectedCode ? (
+            <View style={styles.rejectedToast}>
+              <Text style={styles.rejectedToastText}>
+                ✕ Not a product barcode{rejectedCode ? ` (${rejectedCode})` : ''}
+              </Text>
             </View>
           ) : null}
         </View>
@@ -678,6 +703,21 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 15,
     fontWeight: '600'
+  },
+  rejectedToast: {
+    position: 'absolute',
+    bottom: 24,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(229, 62, 62, 0.92)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    zIndex: 20
+  },
+  rejectedToastText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700'
   },
   focusRing: {
     position: 'absolute',

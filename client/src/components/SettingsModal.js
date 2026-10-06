@@ -18,6 +18,7 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
   const [marketplace, setMarketplace] = useState('CA');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [scanItf14, setScanItf14] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState(null);
   const [installing, setInstalling] = useState(false);
@@ -97,13 +98,15 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
     setMarketplace(s.marketplace || 'CA');
     setSoundEnabled(s.soundEnabled !== false);
     setVibrationEnabled(s.vibrationEnabled !== false);
+    setScanItf14(s.scanItf14 === true);
   };
 
   const handleSave = async () => {
     const updated = {
       marketplace,
       soundEnabled,
-      vibrationEnabled
+      vibrationEnabled,
+      scanItf14
     };
     await saveSettings(updated);
     if (onSettingsUpdated) onSettingsUpdated(updated);
@@ -184,6 +187,21 @@ export default function SettingsModal({ visible, onClose, onSettingsUpdated }) {
               <Switch
                 value={soundEnabled}
                 onValueChange={setSoundEnabled}
+                trackColor={{ false: '#4A5568', true: '#48BB78' }}
+              />
+            </View>
+
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleTextBlock}>
+                <Text style={styles.toggleLabel}>Scan case / carton barcodes</Text>
+                <Text style={styles.toggleHint}>
+                  Enable ITF-14 (the 14-digit code on multi-packs and retail boxes). Off by default:
+                  case codes are usually noise when scouting individual items.
+                </Text>
+              </View>
+              <Switch
+                value={scanItf14}
+                onValueChange={setScanItf14}
                 trackColor={{ false: '#4A5568', true: '#48BB78' }}
               />
             </View>
@@ -356,6 +374,16 @@ const styles = StyleSheet.create({
   toggleLabel: {
     color: '#E2E8F0',
     fontSize: 15
+  },
+  toggleTextBlock: {
+    flex: 1,
+    marginRight: 12
+  },
+  toggleHint: {
+    color: '#718096',
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 2
   },
   dangerButton: {
     marginTop: 12,

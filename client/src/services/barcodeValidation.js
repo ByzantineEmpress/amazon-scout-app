@@ -1,125 +1,212 @@
 /**
- * Validation for codes reported by the camera.
+ * Scanner validation: what counts as a real product barcode, and when a scan is accepted.
  *
- * The scanner is fast, but it is not always right. Two things make a wrong read expensive here:
+ * A code is only accepted after it has been read correctly in a run of frames. A single misread
+ * breaks the check digit, so the checksum does most of the work; the frame agreement layer is
+ * what catches the ~10% of misreads that happen to pass it, and the time-windowed, spatially
+ * stable gate that lives on top of that is what stops a steady misread (or a steady *other*
+ * barcode in the frame) from ever being accepted.
  *
- *  - `normalizeBarcode` in barcodeService.js strips every non-digit character. So a Code 39
- *    asset tag reading "ABC123456" becomes the barcode "123456", and a QR code holding a URL
- *    becomes whatever digits that URL happened to contain. Both then get looked up as if they
- *    were real product barcodes.
- *  - Acting on the first frame means a transient misread is treated as fact.
- *
- * Every detection therefore passes through here before anything is looked up. Only the product
- * symbologies are enabled at the camera, and a code must be all digits, of an expected length,
- * and carry a valid GS1 check digit. None of this costs measurable time: it is arithmetic on a
- * short string, and it happens while the camera is still running.
+ * This module has no imports on purpose: the test files load it by reading the source and
+ * stripping the `export` keywords, which only works while it stays self-contained.
  */
 
 /**
- * Symbologies that actually appear on books, DVDs, Blu-rays and games.
+ * Symbologies the live scanner is allowed to report.
  *
- * Deliberately excluded:
- *  - `qr`       shelf labels, price tags and marketing codes are everywhere, and their contents
- *                are text, not product numbers.
- *  - `code39` / `code128`  general-purpose alphanumeric codes used on asset tags and shipping
- *                labels; normalizeBarcode would mangle them into plausible-looking wrong digits.
- *  - `upc_e`    the compressed format for small packages (gum, lip balm). Validating it means
- *                expanding it to UPC-A first, and a wrong expansion would reject real codes, so
- *                it is left out until it can be done properly. Type it in via Manual Entry.
- *  - `pdf417`, `aztec`, `datamatrix`, `code93`, `codabar`  not used on retail media.
+ * Only retail product barcodes: EAN-13 (international / most books), EAN-8, UPC-A, and ITF-14
+ * (the 14-digit case/carton code on multi-packs and retail boxes).
+ *
+ * Code 39 and Code 128 are deliberately absent: they are the symbology of asset tags, shelf
+ * labels and internal stock marks, and a camera pointed at a shelf of them will report them
+ * just as readily as product barcodes. QR / PDF417 / Aztec / Data Matrix encode text, not
+ * barcodes, and the moment one of them is enabled a URL or a Wi-Fi payload becomes a "plausible
+ * barcode".
+ *
+ * The default set excludes ITF-14 (see DEFAULT_SCANNER_BARCODE_TYPES below) because case
+ * barcodes are usually noise for a reseller scanning individual items. ITF-14 is available as a
+ * setting, not a default.
  */
 export const SCANNER_BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'itf14'];
 
-/** Digit counts those symbologies use: EAN-8, UPC-A, EAN-13, ITF-14. */
-const VALID_LENGTHS = [8, 12, 13, 14];
-
-/** EAN-2 and EAN-5 are the only add-on supplements printed beside a retail barcode. */
-const ADD_ON_LENGTHS = [2, 5];
+/**
+ * The symbologies enabled by default. ITF-14 is excluded: case/carton codes on multi-packs and
+ * retail boxes are the "scanned a case, got the wrong item" class of false read, and they are
+ * almost never what a reseller is scouting.
+ */
+export const DEFAULT_SCANNER_BARCODE_TYPES = ['ean13', 'ean8', 'upc_a'];
 
 /**
- * GS1 modulo-10 check digit. Counting left from the end of the body, digits alternate weight
- * 3, 1, 3, 1 ... This is shared by EAN-8, UPC-A, EAN-13 and ITF-14; UPC-E is the exception and
- * is not handled here.
+ * How many agreeing frames, within the confirmation window, are required before a code is
+ * accepted. Two is the minimum that survives a single-frame misread; three (the default) is
+ * what stops a steady misread or a steady second barcode in the frame.
+ */
+export const REQUIRED_CONFIRMATIONS = 3;
+
+/** The confirmation window in ms. A code must agree `REQUIRED_CONFIRMATIONS` times inside this
+ *  window or the count resets. The window is wide enough to cover a normal hold-still scan and
+ *  narrow enough that a code the user has clearly moved away from is not silently carried over. */
+export const CONFIRM_WINDOW_MS = 2500;
+
+/**
+ * The fraction of a frame the two bounding boxes may differ in (width and height) and still
+ * count as "the same barcode in the same place." A real held-still scan drifts by a few pixels;
+ * a different barcode elsewhere in the frame moves by a lot.
+ */
+export const BOUNDS_TOLERANCE = 0.15;
+
+const CHECK_DIGIT_BASE = 10;
+
+/**
+ * Strip everything that is not a digit. A real product barcode is always numeric, so any letter
+ * (a QR payload, a Code 39 asset tag, an ASIN) makes the code unscannable by design.
+ */
+export function normalizeBarcode(raw) {
+  return String(raw == null ? '' : raw).replace(/[^0-9]/g, '');
+}
+
+/**
+ * The GS1 / UPC / EAN check digit for a code body (everything except the final digit).
+ * Even positions count 3x, odd positions count 1x, read from the right.
  */
 export function gs1CheckDigit(body) {
+  const digits = String(body).split('').map(Number);
   let sum = 0;
-  for (let i = 0; i < body.length; i++) {
-    sum += Number(body[body.length - 1 - i]) * (i % 2 === 0 ? 3 : 1);
+  for (let i = digits.length - 1; i >= 0; i--) {
+    const positionFromRight = digits.length - i; // 1-indexed from the right
+    const weight = positionFromRight % 2 === 1 ? 3 : 1;
+    sum += (digits[i] || 0) * weight;
   }
-  return (10 - (sum % 10)) % 10;
+  return (CHECK_DIGIT_BASE - (sum % CHECK_DIGIT_BASE)) % CHECK_DIGIT_BASE;
 }
 
-/** True when `code` is all digits, a supported length, and its check digit agrees. */
+/**
+ * True when the full code's last digit matches its GS1 check digit.
+ */
+function checkDigitValid(code) {
+  if (code.length < 2) return false;
+  return Number(code[code.length - 1]) === gs1CheckDigit(code.slice(0, -1));
+}
+
+/**
+ * A valid product code is 8, 12, 13 or 14 digits and passes its check digit.
+ */
 export function isValidProductCode(code) {
-  if (typeof code !== 'string' || !/^\d+$/.test(code)) return false;
-  if (!VALID_LENGTHS.includes(code.length)) return false;
-  return gs1CheckDigit(code.slice(0, -1)) === Number(code[code.length - 1]);
+  if (!/^\d{8,14}$/.test(String(code || ''))) return false;
+  return checkDigitValid(String(code));
 }
 
 /**
- * Decide whether a detection should be trusted.
+ * Decide whether a single scanned string is a real product code, and return the exact digits to
+ * look up. Returns `{ ok, code, reason }`.
  *
- * Returns `{ ok: true, code }` or `{ ok: false, reason }`. The reason is for debugging and
- * tests; it is never shown to the user, who only cares that the scanner keeps looking.
+ * The rules, in order:
+ *  1. It must be numeric after stripping. Anything with a letter is not a product barcode.
+ *  2. It must be a plausible length (8/12/13/14) or an EAN-13 with a 2/5-digit add-on.
+ *  3. It must pass the GS1 check digit.
+ *
+ * The add-on rule only fires on a 15/16/17/18-digit string whose first 13 digits are a valid
+ * EAN-13. This is deliberately narrow: a 13-digit string that is itself a valid UPC-A is *not*
+ * truncated, because that would accept a bad EAN as a UPC-A plus a 1-digit add-on (the bug from
+ * v1.0.x where a misread EAN-13 looked up the wrong product).
  */
-export function validateScannedCode(rawData) {
-  const raw = typeof rawData === 'string' ? rawData.trim() : '';
+export function validateScannedCode(raw) {
+  const digits = normalizeBarcode(raw);
+  if (!digits) return { ok: false, reason: 'empty' };
+  if (/[a-z]/i.test(String(raw))) return { ok: false, reason: 'not-numeric' };
 
-  if (!raw) return { ok: false, reason: 'empty' };
+  const n = digits.length;
 
-  if (!/^\d+$/.test(raw)) {
-    // A QR code, a Code 39/128 label, or any text. This is the case that used to reach the
-    // lookup as a mangled number.
-    return { ok: false, reason: 'not-numeric' };
+  // Direct hit: a known product-code length that passes its check digit.
+  if (n === 8 || n === 12 || n === 13 || n === 14) {
+    if (checkDigitValid(digits)) return { ok: true, code: digits };
+    return { ok: false, reason: 'check-digit' };
   }
 
-  if (VALID_LENGTHS.includes(raw.length) && isValidProductCode(raw)) {
-    return { ok: true, code: raw };
+  // EAN-13 + 2/5-digit add-on: the first 13 digits must themselves be a valid EAN-13.
+  if ((n === 15 || n === 18) && checkDigitValid(digits.slice(0, 13))) {
+    return { ok: true, code: digits.slice(0, 13) };
+  }
+  if ((n === 16 || n === 17) && checkDigitValid(digits.slice(0, 13))) {
+    // 13 + 3 or 13 + 4 is not a real add-on, but the first 13 still must be a valid EAN-13 to
+    // be accepted at all; otherwise it is an unexpected length.
+    if (checkDigitValid(digits.slice(0, 13))) return { ok: true, code: digits.slice(0, 13) };
+    return { ok: false, reason: `unexpected-length-${n}` };
   }
 
-  // Retail media frequently carries a price add-on (2 or 5 digits) printed beside the main
-  // barcode, and some platforms report the two glued together. Such a value looks like an
-  // invalid code of an odd length, so before rejecting it, try the leading EAN-13 / UPC-A on
-  // its own. Books are exactly where this matters. Costs nothing when it never fires.
-  //
-  // The tail length must be a real add-on length. Loosening this to "any extra digits" would
-  // accept a misread 13-digit EAN as whatever 12-digit UPC-A its first digits happened to
-  // spell - which is the very class of wrong lookup this module exists to prevent.
-  for (const mainLength of [13, 12]) {
-    if (!ADD_ON_LENGTHS.includes(raw.length - mainLength)) continue;
-    const candidate = raw.slice(0, mainLength);
-    if (isValidProductCode(candidate)) {
-      return { ok: true, code: candidate };
+  return { ok: false, reason: `unexpected-length-${n}` };
+}
+
+/**
+ * True when two bounding boxes are close enough to be "the same barcode in the same place."
+ * Each box is `{ x, y, width, height }`. A missing box on either side is treated as "cannot
+ * confirm" (false), because the spatial gate exists to reject, not to guess.
+ */
+export function sameBounds(a, b, tolerance = BOUNDS_TOLERANCE) {
+  if (!a || !b) return false;
+  const maxW = Math.max(a.width || 0, b.width || 0);
+  const maxH = Math.max(a.height || 0, b.height || 0);
+  const dx = Math.abs((a.x || 0) - (b.x || 0));
+  const dy = Math.abs((a.y || 0) - (b.y || 0));
+  return dx <= maxW * tolerance && dy <= maxH * tolerance;
+}
+
+/**
+ * The empty confirmation state.
+ */
+export const EMPTY_CONFIRMATION = {
+  code: null,
+  count: 0,
+  firstAt: null,
+  bounds: null
+};
+
+/**
+ * Fold one scanned frame into the confirmation state.
+ *
+ * A frame *agrees* with the running state when:
+ *  - the code is the same,
+ *  - it was seen within `CONFIRM_WINDOW_MS` of the first frame of the run, and
+ *  - (when bounds are available) it is in the same place as the first frame.
+ *
+ * When it agrees, the count increments; when it does not, the run restarts at this frame. A code
+ * is accepted once the count reaches `REQUIRED_CONFIRMATIONS`.
+ *
+ * Returns `{ accept, code, state }`. `accept` is true exactly once, on the frame that completes
+ * the run.
+ */
+export function confirmScan(state, code, now, bounds) {
+  const s = state || EMPTY_CONFIRMATION;
+
+  const inWindow =
+    s.firstAt !== null &&
+    now !== undefined &&
+    now - s.firstAt <= CONFIRM_WINDOW_MS;
+
+  const samePlace =
+    s.bounds == null || bounds == null || sameBounds(s.bounds, bounds);
+
+  if (s.code === code && inWindow && samePlace) {
+    const count = s.count + 1;
+    const accepted = count >= REQUIRED_CONFIRMATIONS;
+    return {
+      accept: accepted,
+      code,
+      state: accepted
+        ? EMPTY_CONFIRMATION
+        : { code, count, firstAt: s.firstAt, bounds: s.bounds }
+    };
+  }
+
+  // New run: this frame is the first of a fresh sequence.
+  return {
+    accept: false,
+    code,
+    state: {
+      code,
+      count: 1,
+      firstAt: now === undefined ? null : now,
+      bounds: bounds || null
     }
-  }
-
-  if (!VALID_LENGTHS.includes(raw.length)) {
-    return { ok: false, reason: `unexpected-length-${raw.length}` };
-  }
-
-  return { ok: false, reason: 'check-digit' };
+  };
 }
-
-/**
- * How many consecutive detections of the same code are required before acting on it.
- * A handheld camera produces the occasional single-frame misread; requiring agreement across
- * frames removes almost all of them. At the rate the camera reports barcodes this is well
- * under a tenth of a second, so it stays fast.
- */
-export const REQUIRED_CONFIRMATIONS = 2;
-
-/**
- * Frame-agreement gate. Pure and stateful by design, so it can be tested without a camera:
- * `state` is `{ code, count }` from the previous frame, and the result carries the next state
- * plus whether the code may now be accepted.
- *
- * Any different code resets the count, so a real barcode that is briefly misread as something
- * else simply needs one more agreeing frame rather than being abandoned.
- */
-export function confirmScan(state, code) {
-  const count = (state && state.code === code ? state.count : 0) + 1;
-  return { state: { code, count }, accept: count >= REQUIRED_CONFIRMATIONS };
-}
-
-/** State for the gate before any code has been seen. */
-export const EMPTY_CONFIRMATION = { code: '', count: 0 };

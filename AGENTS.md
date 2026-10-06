@@ -400,7 +400,7 @@ worktree and the full history and reports locations only).
 
 ## 9. Working in this environment (Windows)
 
-- The shell is **PowerShell**, and file paths use backslashes. Use `workdir` rather than `cd`.
+- The agent terminal on this machine is **git-bash / MSYS `bash`**, not PowerShell: use POSIX syntax (`ls`, `grep`, `&&`, single-quoted strings). Paths passed to *native* tools (git, node, gh, curl) are not translated, so give them forward-slash `C:/Users/...` paths (or `$LOCALAPPDATA/Temp` for scratch); MSYS-style `/c/Users/...` and `/tmp`/`/dev/null` break native binaries (curl exit 23, git "cannot change to"). Human operators using PowerShell directly should still note: `>` redirection in PowerShell 5.1 writes UTF-16, which silently corrupts UTF-8 files (emoji, accents) — use the editor tool for file contents, or `cmd /c "… > file"` if you must redirect.
 - **`>` redirection in PowerShell 5.1 writes UTF-16**, which silently corrupts UTF-8 files
   (emoji, accents). Use the editor tool for file contents, or `cmd /c "… > file"` if you must
   redirect.

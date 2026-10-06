@@ -43,6 +43,10 @@ function assertTrue(value, label) {
   if (value !== true) throw new Error(`${label}: expected true, got ${JSON.stringify(value)}`);
 }
 
+function assertFalse(value, label) {
+  if (value !== false) throw new Error(`${label}: expected false, got ${JSON.stringify(value)}`);
+}
+
 // barcodeValidation.js is an ES module and client/package.json has no "type": "module", so
 // Node would parse it as CommonJS. Same loader approach as the other suites: read the source,
 // drop the `export` keywords, and evaluate it.
@@ -51,15 +55,16 @@ const source = fs.readFileSync(
   path.join(here, '..', 'src', 'services', 'barcodeValidation.js'),
   'utf8'
 );
-const mod = new Function(`${source.replace(/^export /gm, '')}
-return {
-  SCANNER_BARCODE_TYPES, gs1CheckDigit, isValidProductCode, validateScannedCode,
-  REQUIRED_CONFIRMATIONS, confirmScan, EMPTY_CONFIRMATION
+const mod = new Function(`${source.replace(/^export /gm, '')}\nreturn {
+  SCANNER_BARCODE_TYPES, DEFAULT_SCANNER_BARCODE_TYPES, gs1CheckDigit, isValidProductCode,
+  validateScannedCode, normalizeBarcode, sameBounds, REQUIRED_CONFIRMATIONS, CONFIRM_WINDOW_MS,
+  BOUNDS_TOLERANCE, confirmScan, EMPTY_CONFIRMATION
 };`)();
 
 const {
-  SCANNER_BARCODE_TYPES, gs1CheckDigit, isValidProductCode, validateScannedCode,
-  REQUIRED_CONFIRMATIONS, confirmScan, EMPTY_CONFIRMATION
+  SCANNER_BARCODE_TYPES, DEFAULT_SCANNER_BARCODE_TYPES, gs1CheckDigit, isValidProductCode,
+  validateScannedCode, normalizeBarcode, sameBounds, REQUIRED_CONFIRMATIONS, CONFIRM_WINDOW_MS,
+  BOUNDS_TOLERANCE, confirmScan, EMPTY_CONFIRMATION
 } = mod;
 
 console.log('\nbarcodeValidation.js\n');
@@ -86,9 +91,18 @@ test('symbologies that caused false reads are not enabled', () => {
   }
 });
 
-test('only product symbologies remain enabled', () => {
+test('the full product set includes ITF-14 (case/carton codes)', () => {
+  // ITF-14 is available (for multi-packs) but excluded from the default scan set.
   const expected = ['ean13', 'ean8', 'upc_a', 'itf14'];
-  assertEqual(JSON.stringify(SCANNER_BARCODE_TYPES), JSON.stringify(expected), 'enabled types');
+  assertEqual(JSON.stringify(SCANNER_BARCODE_TYPES), JSON.stringify(expected), 'full set');
+});
+
+test('the default scan set excludes ITF-14 (case codes are noise)', () => {
+  // Case/carton codes are the "scanned a case, got the wrong item" class of false read, so they
+  // are off by default and toggled in Settings.
+  const expected = ['ean13', 'ean8', 'upc_a'];
+  assertEqual(JSON.stringify(DEFAULT_SCANNER_BARCODE_TYPES), JSON.stringify(expected), 'default set');
+  assertFalse(DEFAULT_SCANNER_BARCODE_TYPES.includes('itf14'), 'ITF-14 in default set');
 });
 
 // --- check digits ------------------------------------------------------------
@@ -180,40 +194,126 @@ test('a 13-digit code is never truncated to a valid 12-digit prefix', () => {
   assertEqual(verdict.reason, 'check-digit', 'reason');
 });
 
-// --- frame agreement ---------------------------------------------------------
+// --- spatial stability (sameBounds) ------------------------------------------
+
+test('identical bounds are the same place', () => {
+  const b = { x: 100, y: 200, width: 50, height: 30 };
+  assertTrue(sameBounds(b, { ...b }), 'identical');
+});
+
+test('a few-pixel drift is still the same place', () => {
+  const a = { x: 100, y: 200, width: 50, height: 30 };
+  const b = { x: 104, y: 203, width: 52, height: 31 };
+  assertTrue(sameBounds(a, b), 'small drift');
+});
+
+test('a different barcode elsewhere in the frame is a different place', () => {
+  const a = { x: 100, y: 200, width: 50, height: 30 };
+  const b = { x: 400, y: 600, width: 50, height: 30 };
+  assertFalse(sameBounds(a, b), 'far apart');
+});
+
+test('a missing box cannot confirm the same place', () => {
+  const a = { x: 100, y: 200, width: 50, height: 30 };
+  assertFalse(sameBounds(a, null), 'null b');
+  assertFalse(sameBounds(null, a), 'null a');
+});
+
+test('a larger box that shares the same anchor is still the same place', () => {
+  // The tolerance is relative to the larger box, so a 3x box that shares the same top-left corner
+  // still counts as "the same barcode in the same place." The spatial gate exists to reject a
+  // *different* barcode elsewhere in the frame (tested above), not to distinguish a barcode
+  // from a slightly larger reading of itself.
+  const a = { x: 100, y: 200, width: 50, height: 30 };
+  const b = { x: 100, y: 200, width: 150, height: 90 };
+  assertTrue(sameBounds(a, b), '3x box sharing anchor');
+});
+
+test('a larger box shifted far away is a different place', () => {
+  // The anchor delta must stay within the larger box's tolerance; a 3x box moved a full box-width
+  // away does not.
+  const a = { x: 100, y: 200, width: 50, height: 30 };
+  const b = { x: 250, y: 200, width: 150, height: 90 };
+  assertFalse(sameBounds(a, b), '3x box shifted far');
+});
+
+// --- frame agreement (time-windowed, spatially stable) ------------------------
 
 test('one frame is not enough', () => {
-  const first = confirmScan(EMPTY_CONFIRMATION, '9780132350884');
+  const first = confirmScan(EMPTY_CONFIRMATION, '9780132350884', 1000);
   assertEqual(first.accept, false, 'accepted on the first frame');
   assertEqual(first.state.code, '9780132350884', 'state code');
   assertEqual(first.state.count, 1, 'state count');
 });
 
-test('a second agreeing frame accepts', () => {
-  const first = confirmScan(EMPTY_CONFIRMATION, '9780132350884');
-  const second = confirmScan(first.state, '9780132350884');
-  assertEqual(second.accept, true, 'accepted');
-  assertEqual(REQUIRED_CONFIRMATIONS, 2, 'required confirmations');
+test('the third agreeing frame within the window accepts', () => {
+  assertEqual(REQUIRED_CONFIRMATIONS, 3, 'required confirmations');
+  const a = confirmScan(EMPTY_CONFIRMATION, '9780132350884', 1000);
+  const b = confirmScan(a.state, '9780132350884', 1200);
+  const c = confirmScan(b.state, '9780132350884', 1400);
+  assertEqual(a.accept, false, 'frame 1');
+  assertEqual(b.accept, false, 'frame 2');
+  assertEqual(c.accept, true, 'frame 3');
+  assertEqual(c.code, '9780132350884', 'accepted code');
 });
 
-test('alternating codes never confirm', () => {
+test('frames outside the window do not confirm', () => {
+  // A code seen, then the user moves away, then comes back: the gap exceeds the window, so the
+  // count restarts and the late frames never add to the early ones.
+  const a = confirmScan(EMPTY_CONFIRMATION, '9780132350884', 1000);
+  const late = confirmScan(a.state, '9780132350884', 1000 + CONFIRM_WINDOW_MS + 100);
+  assertEqual(late.accept, false, 'accepted across the window');
+  assertEqual(late.state.count, 1, 'count restarted');
+});
+
+test('a steady misread that never leaves the window still needs three frames', () => {
+  // The old two-frame gate accepted a steady misread after two consecutive reports. The new
+  // three-frame gate requires three, so a single intermittent correct read in the middle does
+  // not defeat it.
   let state = EMPTY_CONFIRMATION;
   let accepted = false;
-  for (const code of ['9780132350884', '9780132350885', '9780132350884', '9780132350885']) {
-    const step = confirmScan(state, code);
+  const frames = [
+    ['9780132350885', 1000], // misread
+    ['9780132350885', 1100], // misread
+    ['9780132350884', 1200], // one correct read
+    ['9780132350885', 1300], // misread again
+    ['9780132350885', 1400]  // misread
+  ];
+  for (const [code, t] of frames) {
+    const step = confirmScan(state, code, t);
     state = step.state;
     if (step.accept) accepted = true;
   }
-  assertEqual(accepted, false, 'accepted an alternating sequence');
+  assertFalse(accepted, 'accepted an intermittent-correct sequence');
+});
+
+test('a steady second barcode in the frame is rejected by the spatial gate', () => {
+  // Two barcodes in the frame: the main one (correct code, stable position) and a case code
+  // (different code, different position). The case code never agrees in place, so it never
+  // confirms even if it is steady.
+  const main = { x: 100, y: 200, width: 50, height: 30 };
+  const case_ = { x: 400, y: 600, width: 50, height: 30 };
+  let state = EMPTY_CONFIRMATION;
+  let acceptedCase = false;
+  for (let i = 0; i < 5; i++) {
+    // Alternate main and case so neither runs up to three in a row in the same place.
+    const stepMain = confirmScan(state, '9780132350884', 1000 + i * 100, main);
+    state = stepMain.state;
+    const stepCase = confirmScan(state, '12345678901231', 1000 + i * 100 + 50, case_);
+    state = stepCase.state;
+    if (stepCase.accept) acceptedCase = true;
+  }
+  assertFalse(acceptedCase, 'case code confirmed');
 });
 
 test('a different code restarts the count rather than blocking', () => {
-  const first = confirmScan(EMPTY_CONFIRMATION, '9780132350884');
-  const other = confirmScan(first.state, '036000291452');
+  const first = confirmScan(EMPTY_CONFIRMATION, '9780132350884', 1000);
+  const other = confirmScan(first.state, '036000291452', 1200);
   assertEqual(other.accept, false, 'accepted');
   assertEqual(other.state.count, 1, 'count restarted');
-  const back = confirmScan(other.state, '9780132350884');
-  assertEqual(back.accept, false, 'should need two agreeing frames again');
+  const back = confirmScan(other.state, '9780132350884', 1400);
+  assertEqual(back.accept, false, 'should need three agreeing frames again');
+  assertEqual(back.state.count, 1, 'count is one, not carried over');
 });
 
 console.log('');
