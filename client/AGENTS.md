@@ -19,7 +19,8 @@ Do not introduce a router, a `src/app/` tree, or `_layout.tsx` files unless the 
 ```
 index.js                  → registerRootComponent(App)
 App.js                    → camera UI, scan loop, modal state
-src/components/*Modal.js  → ScanResult, Settings, History, OfflineQueue, ManualEntry
+src/components/*Modal.js  → ScanResult, Settings, History, OfflineQueue, ManualEntry,
+                            IsbnScan, ItemComps, EbayComps
 src/services/             → all non-UI logic (see Data flow)
 plugins/                  → Expo config plugins (native config, applied at prebuild)
 ```
@@ -39,7 +40,17 @@ npm test                     # from the REPO ROOT — runs every test in client/
 npx expo prebuild --platform android   # generate android/ (CI does this; never hand-edit it)
 ```
 
-There is no ESLint config and no TypeScript config checked in, so `npx expo lint` would scaffold ESLint on first run and `npx tsc --noEmit` has nothing to check. Before declaring a task done, run `npm test` from the repo root and `npx expo-doctor`; if your change touches a component, verify it in Expo Go on a device.
+ESLint **is** configured (`client/eslint.config.js`), so `npx expo lint` is a real check and not a
+scaffolding prompt. Its baseline is a handful of pre-existing errors and warnings — do not add to
+that count. There is no TypeScript config, so `npx tsc --noEmit` has nothing to check.
+
+Before declaring a task done, run `npm test` from the repo root, `npx expo lint` here, and
+`npx expo export --platform android --no-bytecode` to prove it bundles. `npx expo-doctor` is useful
+when dependency versions look wrong.
+
+Verifying on a device is not always Expo Go: the OCR screens use `@infinitered/react-native-mlkit-text-recognition`,
+which Expo Go does not contain, so they need a real build (a CI **dry run** — see the root
+`AGENTS.md`, §5). The barcode flow runs fine in Expo Go.
 
 ## Data flow
 
