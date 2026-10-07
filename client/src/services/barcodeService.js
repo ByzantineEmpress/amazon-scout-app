@@ -41,8 +41,35 @@ async function scrapeAmazonSearch(barcode, marketplace = 'CA') {
       const blocks = html.split('data-component-type="s-search-result"').slice(1);
       if (blocks.length === 0) return null;
 
+      // For book searches, Amazon may surface other titles with the same name (e.g. a
+      // different "Dark Room" by another publisher). The ASIN for a book equals the
+      // ISBN-10 digits (or ISBN-13 digits), so we verify the ASIN matches the query
+      // before accepting an early return. Without this check, the first non-digital
+      // result with a used price wins — even if it's the wrong book.
+      //
+      // The query may be an ISBN-10 (10 digits) or ISBN-13 (13 digits starting 978/979).
+      // The ASIN in the result is the same digits. We compare by stripping non-digits
+      // and checking if one contains the other (to handle ISBN-10 vs ISBN-13 mismatch).
+      const isBookQuery = isBook && /^\d{10,13}$/.test(query);
+      const queryDigits = query.replace(/\D/g, '');
+
+      const asinMatchesQuery = (asin) => {
+        if (!asin || !queryDigits) return false;
+        const asinDigits = asin.replace(/\D/g, '');
+        // Exact match, or the ASIN is the ISBN-10 prefix of the ISBN-13 query (or vice versa)
+        if (asinDigits === queryDigits) return true;
+        if (asinDigits.length === 10 && queryDigits.length === 13) {
+          return queryDigits.slice(-10) === asinDigits;
+        }
+        if (asinDigits.length === 13 && queryDigits.length === 10) {
+          return asinDigits.slice(-10) === queryDigits;
+        }
+        return false;
+      };
+
       let bestPhysical = null;
       let bestAny = null;
+      let bestBookMatch = null; // first result whose ASIN matches the queried ISBN
 
       for (const b of blocks) {
         const titleMatch = b.match(/<h2[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i) ||
@@ -61,7 +88,7 @@ async function scrapeAmazonSearch(barcode, marketplace = 'CA') {
         const asin = asinMatch ? asinMatch[1] : null;
 
         const isDigital = (rawTitle.toLowerCase().includes('kindle') || 
-                           rawTitle.toLowerCase().includes('audible') || 
+                           rawTitle.toLowerCase().includes('audible') ||
                            (asin && asin.startsWith('B0')));
 
         const authorMatch = b.match(/by\s+<[^>]+>([^<]+)<\/[^>]+>/i) ||
@@ -103,15 +130,27 @@ async function scrapeAmazonSearch(barcode, marketplace = 'CA') {
           isDigital
         };
 
+        // Track the first result whose ASIN matches the queried ISBN (the correct book).
+        if (isBookQuery && asinMatchesQuery(asin) && !bestBookMatch) {
+          bestBookMatch = candidate;
+        }
+
+        // Early return: for non-book queries, the first non-digital result with a used
+        // price wins. For book queries, only return early if the ASIN matches the ISBN —
+        // otherwise a different book with the same title grabs the slot.
         if (!isDigital && candidate.usedMin) {
-          return candidate;
+          if (!isBookQuery || asinMatchesQuery(asin)) {
+            return candidate;
+          }
         }
 
         if (!bestPhysical && !isDigital) bestPhysical = candidate;
         if (!bestAny) bestAny = candidate;
       }
 
-      return bestPhysical || bestAny;
+      // Prefer the ISBN-matched result for book searches, then fall back to the
+      // best physical result, then any result.
+      return bestBookMatch || bestPhysical || bestAny;
     } catch (e) {
       return null;
     }
