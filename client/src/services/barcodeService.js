@@ -381,11 +381,43 @@ export async function fetchAmazonOfferList(asin, marketplace = 'CA') {
       }
     }
 
-    // Lowest used and offer count are NOT in the initial detail-page HTML — Amazon loads the
-    // full offer list dynamically via JavaScript. The search scrape already captures the
-    // "Used & New from $X (N offers)" snippet, so the caller uses that for lowestUsed and
-    // offerCount. This function only adds what the detail page has that the search page doesn't:
-    // the buy box price (newPrice) and the sales rank.
+    // Lowest used: the "Other sellers on Amazon" section on the detail page shows the
+    // lowest price across all offers for THIS specific ASIN, with the condition
+    // (New or Used) in the condition-text-block-title-text span. The price is in the
+    // apex-pricetopay-accessibility-label span. This is authoritative for the specific book
+    // (unlike the search snippet, which can be polluted by a different edition with the
+    // same title).
+    // Markup:
+    //   <span id="condition-text-block-title-text">Lowest price: Used</span>
+    //   ...
+    //   <span class="apex-pricetopay-accessibility-label">$8.79</span>
+    const otherSellersPos = html.indexOf('Other sellers on Amazon');
+    if (otherSellersPos !== -1) {
+      const section = html.slice(otherSellersPos, otherSellersPos + 3000);
+      const condition = section.match(/Lowest price:\s*(New|Used)/);
+      const price = section.match(
+        /apex-pricetopay-accessibility-label[^>]*>\s*\$([\d,]+\.?\d{0,2})/
+      );
+      if (price && condition) {
+        const v = parseFloat(price[1].replace(/,/g, ''));
+        if (Number.isFinite(v)) {
+          if (condition[1] === 'Used') {
+            result.lowestUsed = v;
+          } else {
+            // Lowest is a New offer — it's a better deal, use it as the new price if lower.
+            if (result.newPrice == null || v < result.newPrice) {
+              result.newPrice = v;
+            }
+          }
+        }
+      }
+    }
+
+    // Offer count: "Compare all N options" link in the "Other sellers" section.
+    const compareMatch = html.match(/Compare all (\d+) options/i);
+    if (compareMatch) {
+      result.offerCount = parseInt(compareMatch[1], 10);
+    }
 
     // Sales rank: "Amazon Best Sellers Rank: #N in Category".
     const rank = html.match(
@@ -522,13 +554,15 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       usedOffers: null,
       priceSource,
       // Real offer list from the product detail page (the "exact Amazon pricing").
-      // newPrice and salesRank come from the detail page; lowestUsed and offerCount come from
-      // the search scrape (the detail page loads them dynamically, so they aren't in the HTML).
-      newPrice: offerList?.newPrice ?? null,
-      lowestUsed: amz?.usedMin ?? null,
+      // The detail page's "Other sellers" section is authoritative for this specific ASIN:
+      // newPrice (buy box), lowestUsed (lowest across all offers), offerCount, and salesRank.
+      // The search-snippet values (amz.usedMin, amz.offerCount) are fallbacks for when the
+      // detail page scrape fails.
+      newPrice: offerList?.newPrice ?? buyBox ?? null,
+      lowestUsed: offerList?.lowestUsed ?? amz?.usedMin ?? null,
       soldByAmazon: offerList?.soldByAmazon ?? false,
       salesRank: offerList?.salesRank ?? null,
-      offerCount: amz?.offerCount ?? null,
+      offerCount: offerList?.offerCount ?? amz?.offerCount ?? null,
       sellerCentralUrl,
       amazonProductUrl,
       timestamp: Date.now()
