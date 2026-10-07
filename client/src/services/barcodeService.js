@@ -73,6 +73,11 @@ async function scrapeAmazonSearch(barcode, marketplace = 'CA') {
                           b.match(/More\s+Buying\s+Choices[\s\S]*?(?:CDN\$|C\$|\$)\s*([0-9]+\.[0-9]{2})/i);
         let usedMin = usedMatch ? parseFloat(usedMatch[1]) : null;
 
+        // Offer count: "N used & new offers" or "N offers" in the search result block.
+        const offerCountMatch = b.match(/(\d+)\s+used\s*&\s*new\s+offers?/i) ||
+                                b.match(/(\d+)\s+offers?\s*\(/i);
+        const offerCount = offerCountMatch ? parseInt(offerCountMatch[1], 10) : null;
+
         // BuyBox
         const bbMatch = b.match(/class="a-price-whole">([0-9,]+)<span class="a-price-fraction">([0-9]{2})<\/span>/);
         const buyBox = bbMatch ? parseFloat(bbMatch[1].replace(/,/g, '') + '.' + bbMatch[2]) : null;
@@ -93,6 +98,7 @@ async function scrapeAmazonSearch(barcode, marketplace = 'CA') {
           asin: asin || query,
           buyBox,
           usedMin: usedMin || buyBox,
+          offerCount,
           domain,
           isDigital
         };
@@ -314,18 +320,21 @@ export async function fetchAmazonOfferList(asin, marketplace = 'CA') {
       offerCount: null
     };
 
-    // New price: the buy box "priceToPay" / "a-price" on the detail page. This is Amazon's
-    // own listed price when Amazon is the seller, or the lowest new offer otherwise.
+    // New price: the buy box "priceToPay" on the detail page. The current markup is:
+    //   <span class="a-price ... priceToPay ..."><span class="a-offscreen">$23.00</span>...
+    // The price is in a-offscreen directly under the priceToPay span (there is no priceAmount
+    // element in the current layout).
     const priceToPay = html.match(
-      /priceToPay[^>]*>[\s\S]{0,400}?priceAmount[^>]*>(?:<[^>]+>)*([\d,]+\.?\d{0,2})/
+      /priceToPay[\s\S]{0,600}?a-offscreen[^>]*>\$([\d,]+\.?\d{0,2})/
     );
     if (priceToPay) {
       const v = parseFloat(priceToPay[1].replace(/,/g, ''));
       if (Number.isFinite(v)) result.newPrice = v;
     }
     if (result.newPrice == null) {
+      // Fallback: any a-price span with an a-offscreen value (the core price display).
       const corePrice = html.match(
-        /<span class="a-price"[^>]*>[\s\S]{0,300}?a-offscreen>\$([\d,]+\.?\d{0,2})/
+        /<span[^>]*a-price[^>]*>[\s\S]{0,400}?a-offscreen[^>]*>\$([\d,]+\.?\d{0,2})/
       );
       if (corePrice) {
         const v = parseFloat(corePrice[1].replace(/,/g, ''));
@@ -333,27 +342,18 @@ export async function fetchAmazonOfferList(asin, marketplace = 'CA') {
       }
     }
 
-    // Lowest used: the "From $X" in the "Used & New" buy box section on the detail page.
-    const fromUsed = html.match(/From[\s\S]{0,120}?\$([\d,]+\.?\d{0,2})/);
-    if (fromUsed) {
-      const v = parseFloat(fromUsed[1].replace(/,/g, ''));
-      if (Number.isFinite(v)) result.lowestUsed = v;
-    }
-
-    // Offer count: "N used & new offers" or "N offers".
-    const offerCount = html.match(/(\d+)\s+used\s*&\s*new\s+offers?/i) ||
-                       html.match(/(\d+)\s+offers?[\s\S]{0,40}?from\s+\$?/i);
-    if (offerCount) {
-      const n = parseInt(offerCount[1], 10);
-      if (Number.isFinite(n) && n > 0) result.offerCount = n;
-    }
+    // Lowest used and offer count are NOT in the initial detail-page HTML — Amazon loads the
+    // full offer list dynamically via JavaScript. The search scrape already captures the
+    // "Used & New from $X (N offers)" snippet, so the caller uses that for lowestUsed and
+    // offerCount. This function only adds what the detail page has that the search page doesn't:
+    // the buy box price (newPrice) and the sales rank.
 
     // Sales rank: "Amazon Best Sellers Rank: #N in Category".
     const rank = html.match(
-      /Amazon Best Sellers Rank:[\s\S]{0,200}?#([\d,]+)[\s\S]{0,80}?in\s+([^<\n]+)/
+      /Best Sellers Rank[\s\S]{0,200}?#([\d,]+)[\s\S]{0,80}?in\s+([^<\n]+)/
     );
     if (rank) {
-      const category = rank[2].replace(/<[^>]+>/g, '').trim().slice(0, 60);
+      const category = rank[2].replace(/<[^>]+>/g, '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
       result.salesRank = `#${rank[1]} in ${category}`;
     }
 
@@ -483,11 +483,13 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       usedOffers: null,
       priceSource,
       // Real offer list from the product detail page (the "exact Amazon pricing").
+      // newPrice and salesRank come from the detail page; lowestUsed and offerCount come from
+      // the search scrape (the detail page loads them dynamically, so they aren't in the HTML).
       newPrice: offerList?.newPrice ?? null,
-      lowestUsed: offerList?.lowestUsed ?? null,
+      lowestUsed: amz?.usedMin ?? null,
       soldByAmazon: offerList?.soldByAmazon ?? false,
       salesRank: offerList?.salesRank ?? null,
-      offerCount: offerList?.offerCount ?? null,
+      offerCount: amz?.offerCount ?? null,
       sellerCentralUrl,
       amazonProductUrl,
       timestamp: Date.now()
