@@ -491,8 +491,6 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
     // ASIN and pricing
     const isCanada = marketplace !== 'US';
     const asin = amz?.asin || computedAsin || barcode;
-    const usedMin = amz?.usedMin || abe?.usedMin || null;
-    const buyBox = amz?.buyBox || null;
     const priceSource = amz?.usedMin
       ? (amz.isUsFallback ? 'Amazon.com (est. CAD)' : (isCanada ? 'Amazon.ca' : 'Amazon.com'))
       : (abe?.usedMin ? 'AbeBooks / Used Market' : null);
@@ -549,8 +547,8 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       canSell: restriction.canSell,
       requiresInvoices: restriction.requiresInvoices,
       matchedName: restriction.matchedName || null,
-      usedMin,
-      usedBuyBox: buyBox,
+      usedMin: offerList?.lowestUsed ?? amz?.usedMin ?? abe?.usedMin ?? null,
+      usedBuyBox: offerList?.newPrice ?? amz?.buyBox ?? null,
       usedOffers: null,
       priceSource,
       // Real offer list from the product detail page (the "exact Amazon pricing").
@@ -558,7 +556,7 @@ export async function processBarcodeScanOnDevice(rawBarcode, marketplace = 'CA')
       // newPrice (buy box), lowestUsed (lowest across all offers), offerCount, and salesRank.
       // The search-snippet values (amz.usedMin, amz.offerCount) are fallbacks for when the
       // detail page scrape fails.
-      newPrice: offerList?.newPrice ?? buyBox ?? null,
+      newPrice: offerList?.newPrice ?? amz?.buyBox ?? null,
       lowestUsed: offerList?.lowestUsed ?? amz?.usedMin ?? null,
       soldByAmazon: offerList?.soldByAmazon ?? false,
       salesRank: offerList?.salesRank ?? null,
