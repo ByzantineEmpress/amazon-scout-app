@@ -96,10 +96,11 @@ Two more paths run alongside it:
 
 ### The pure modules (and why that matters)
 
-`gatingRules.js`, `barcodeValidation.js`, `isbn.js`, `titleScan.js` and `ebayQuery.js` are
-**dependency-free** — no `import` statements. The test files load them by reading the source and
-stripping the `export` keywords, which only works while they stay self-contained. Keep them that
-way, and put any new pure logic in a module like them rather than in a component. See §6.
+`gatingRules.js`, `barcodeValidation.js`, `isbn.js`, `titleScan.js`, `ebayQuery.js` and
+`ebayHtml.js` are **dependency-free** — no `import` statements. The test files load them by
+reading the source and stripping the `export` keywords, which only works while they stay
+self-contained. Keep them that way, and put any new pure logic in a module like them rather than
+in a component. See §6.
 
 ---
 
@@ -214,18 +215,23 @@ Run all three of these before saying anything is done. Each proves something the
 
 ```bash
 # from the REPO ROOT
-npm test                      # 111 tests across 6 suites, no network needed
+npm test                      # 135 tests across 7 suites, no network needed
 
 cd client
-npx expo lint                 # baseline: 8 errors / 17 warnings, all pre-existing
+npx expo lint                 # 8 errors / 18 warnings at the time of writing, all pre-existing
 npx expo export --platform android --no-bytecode --output-dir dist
 rm -rf dist                   # proves Metro can bundle: imports resolve, no syntax errors
 ```
 
-- **`npm test`** covers the pure logic — validation, extraction, query building, rules.
+Per-suite counts at the time of writing, so drift is visible: gatingRules 15, releaseSigning 9,
+barcodeValidation 28, isbn 27, titleScan 24, ebayQuery 17, ebayHtml 15.
+
+- **`npm test`** covers the pure logic — validation, extraction, query building, HTML parsing and
+  the gating rules.
 - **`npx expo lint`** catches hook violations and undefined variables. It earned its place by
   catching a leftover `barcode` reference after a prop rename, and by reproducing the v1.0.9
-  crash. **Do not add to the error/warning count**; fix your own and leave the pre-existing ones
+  crash. Treat the numbers above as a reference point rather than a contract: **run lint before
+  and after your change and make sure you added nothing**, and leave the pre-existing findings
   alone unless asked to clean them up.
 - **`npx expo export`** is the only local check that the app actually builds as a bundle.
 
@@ -451,6 +457,7 @@ number — never by ISBN or UPC.
 | "No barcode found" forever on still photos | `scanFromURLAsync` was called on the view ref; it is a module-level export only | `ItemCompsModal.js` §4.10 |
 | Photo Comps searched for `EN71 ASTM F963 RoHS` | Compliance marks look exactly like product text | `titleScan.js` |
 | A sticker photo searched for `CUH-ZCT2U CUH-ZCT2U` | The model was both the guessed name and the appended model | `titleScan.js` |
+| Sell-through read **0%** when the count was merely unreadable | `Number(null)` is `0`, so a missing count was coerced into "nothing sold" | `ebayHtml.js` |
 | The release script mis-parsed the first dirty file | `git status --porcelain` output was `.trim()`ed, eating the leading column | `scripts/release.mjs` |
 
 ---

@@ -3,6 +3,11 @@ import { Linking, Platform } from 'react-native';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Clipboard from 'expo-clipboard';
 import { buildEbayQuery } from './ebayQuery';
+import {
+  parseResultCount,
+  parseSoldPrices,
+  sellThroughRate
+} from './ebayHtml';
 
 /**
  * Mobile Chrome user agent, shared by the sold-comps scraper and the in-app WebView so eBay
@@ -25,37 +30,62 @@ export function getEbaySoldUrl(query, marketplace = 'CA') {
   return `${ebayDomain(marketplace)}/sch/i.html?_nkw=${encodeURIComponent(keywords)}&LH_Sold=1&LH_Complete=1&_sop=15`;
 }
 
-/** Scrape the lowest sold price for one query. Returns null when nothing usable comes back. */
-async function scrapeLowestSold(query, marketplace) {
-  if (!query) return null;
+/** Currently-listed listings for the same query, which is the other half of sell-through. */
+export function getEbayActiveUrl(query, marketplace = 'CA') {
+  const keywords = String(query ?? '').trim();
+  return `${ebayDomain(marketplace)}/sch/i.html?_nkw=${encodeURIComponent(keywords)}`;
+}
 
-  const res = await axios.get(getEbaySoldUrl(query, marketplace), {
+/** Fetch a search page. Returns '' rather than throwing, so a failure degrades quietly. */
+async function fetchSearchHtml(url, timeout) {
+  const res = await axios.get(url, {
     headers: {
       'User-Agent': EBAY_MOBILE_USER_AGENT,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     },
-    timeout: 3500,
+    timeout,
     maxRedirects: 2,
     validateStatus: (status) => status >= 200 && status < 400
   });
-
-  if (!res.data || typeof res.data !== 'string' || res.data.includes('Error Page | eBay')) {
-    return null;
-  }
-
-  const priceRegex = /class="s-item__price"[^>]*>(?:<span[^>]*>)?(?:CDN\$|C\$|US\s*\$|\$)\s*([0-9,]+\.[0-9]{2})/gi;
-  const prices = [];
-  let match;
-  while ((match = priceRegex.exec(res.data)) !== null) {
-    const value = parseFloat(match[1].replace(/,/g, ''));
-    if (!Number.isNaN(value) && value > 0.99) prices.push(value);
-  }
-
-  return prices.length > 0 ? { price: Math.min(...prices), count: prices.length } : null;
+  return typeof res.data === 'string' ? res.data : '';
 }
 
 /**
- * The instant lowest-sold figure shown on the scan card.
+ * Read one query's sold page and active page, and work out what it says.
+ *
+ * Two requests instead of one, but they run together, so the wait is the slower of the two rather
+ * than the sum. The active page only feeds the sell-through estimate, so it gets a shorter
+ * timeout and is allowed to fail: the price is the point, and it must not be held up by a page
+ * that is merely nice to have.
+ *
+ * Never throws. Every field is null when it could not be read, because a wrong number here would
+ * be acted on.
+ */
+async function lookupStats(query, marketplace) {
+  const soldUrl = getEbaySoldUrl(query, marketplace);
+  const activeUrl = getEbayActiveUrl(query, marketplace);
+
+  const [soldHtml, activeHtml] = await Promise.all([
+    fetchSearchHtml(soldUrl, 3500).catch(() => ''),
+    fetchSearchHtml(activeUrl, 2500).catch(() => '')
+  ]);
+
+  const prices = parseSoldPrices(soldHtml);
+  const soldCount = parseResultCount(soldHtml);
+  const activeCount = parseResultCount(activeHtml);
+
+  return {
+    soldUrl,
+    price: prices.length > 0 ? Math.min(...prices) : null,
+    count: prices.length,
+    soldCount,
+    activeCount,
+    sellThrough: sellThroughRate(soldCount, activeCount)
+  };
+}
+
+/**
+ * The instant lowest-sold figure and sell-through for the scan card.
  *
  * Tries the title query first, because that is what actually finds book comps, then falls back to
  * the identifier for the occasional listing that quotes an ISBN or UPC. Reports which one
@@ -66,15 +96,25 @@ export async function fetchEbaySoldLowest({ barcode, title, author, marketplace 
   const currencyPrefix = marketplace === 'US' ? '$' : 'CDN$ ';
   const titleQuery = buildEbayQuery({ title, author, barcode });
   const codeQuery = String(barcode ?? '').trim();
-  const soldUrl = getEbaySoldUrl(titleQuery || codeQuery, marketplace);
+  const fallbackUrl = getEbaySoldUrl(titleQuery || codeQuery, marketplace);
 
   const attempts = [['title', titleQuery]];
   if (codeQuery && codeQuery !== titleQuery) attempts.push(['barcode', codeQuery]);
 
   for (const [matchedBy, query] of attempts) {
     try {
-      const hit = await scrapeLowestSold(query, marketplace);
-      if (hit) return { success: true, soldUrl, currencyPrefix, matchedBy, query, ...hit };
+      const stats = await lookupStats(query, marketplace);
+      // Accept the attempt if it told us anything at all: a sell-through with no price is still
+      // worth showing.
+      if (stats.price !== null || stats.sellThrough !== null) {
+        return {
+          success: stats.price !== null,
+          currencyPrefix,
+          matchedBy,
+          query,
+          ...stats
+        };
+      }
     } catch (_e) {
       // eBay challenges unauthenticated scrapers routinely; move on to the next query.
     }
@@ -82,11 +122,14 @@ export async function fetchEbaySoldLowest({ barcode, title, author, marketplace 
 
   return {
     success: false,
-    soldUrl,
+    soldUrl: fallbackUrl,
     price: null,
     currencyPrefix,
     matchedBy: null,
-    query: titleQuery || codeQuery
+    query: titleQuery || codeQuery,
+    soldCount: null,
+    activeCount: null,
+    sellThrough: null
   };
 }
 
@@ -104,16 +147,22 @@ export async function fetchEbayLowestForQuery(query, marketplace = 'CA') {
 
   if (phrase) {
     try {
-      const hit = await scrapeLowestSold(phrase, marketplace);
-      if (hit) {
-        return { success: true, soldUrl, currencyPrefix, price: hit.price, count: hit.count };
-      }
+      const stats = await lookupStats(phrase, marketplace);
+      return { success: stats.price !== null, currencyPrefix, ...stats };
     } catch (_e) {
       // eBay challenges unauthenticated scrapers routinely; the pane behind the button still works.
     }
   }
 
-  return { success: false, soldUrl, currencyPrefix, price: null };
+  return {
+    success: false,
+    soldUrl,
+    currencyPrefix,
+    price: null,
+    soldCount: null,
+    activeCount: null,
+    sellThrough: null
+  };
 }
 
 /**

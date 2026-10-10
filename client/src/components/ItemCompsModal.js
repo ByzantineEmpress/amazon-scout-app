@@ -18,7 +18,15 @@ import { guessItemName, findModelNumber } from '../services/titleScan';
 import { processBarcodeScanOnDevice } from '../services/barcodeService';
 import { validateScannedCode, SCANNER_BARCODE_TYPES } from '../services/barcodeValidation';
 import { fetchEbayLowestForQuery } from '../services/ebayService';
+import { sellThroughBand } from '../services/ebayHtml';
 import EbayCompsModal from './EbayCompsModal';
+
+/**
+ * Sell-through is an estimate built from two search-result counts, so it is coloured to be read
+ * at a glance but never labelled with a word that would claim more than that. The thresholds are
+ * reseller convention (60 / 30), not anything eBay publishes.
+ */
+const SELL_THROUGH_COLOURS = { high: '#48BB78', medium: '#ECC94B', low: '#FC8181' };
 
 /**
  * Photograph any item and look up its eBay sold comps.
@@ -64,6 +72,7 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
   const [model, setModel] = useState('');
   const [status, setStatus] = useState('Frame the item, then take the picture');
   const [lowest, setLowest] = useState(null);
+  const [comps, setComps] = useState(null);
   const [looking, setLooking] = useState(false);
   const [showComps, setShowComps] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -95,8 +104,14 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
     try {
       const res = await fetchEbayLowestForQuery(search, marketplace);
       setLowest(res?.price ?? null);
+      setComps({
+        sellThrough: res?.sellThrough ?? null,
+        soldCount: res?.soldCount ?? null,
+        activeCount: res?.activeCount ?? null
+      });
     } catch (_e) {
       setLowest(null);
+      setComps(null);
     } finally {
       setLooking(false);
     }
@@ -127,6 +142,7 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
     setPhase('reading');
     setStatus('Reading the item...');
     setLowest(null);
+    setComps(null);
 
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.5, shutterSound: false });
@@ -296,18 +312,42 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
                         <ActivityIndicator size="small" color="#ECC94B" />
                         <Text style={styles.readingText}>Checking sold prices...</Text>
                       </View>
-                    ) : lowest !== null ? (
-                      <Text style={styles.lowestText}>
-                        Lowest sold match:{' '}
-                        <Text style={styles.lowestValue}>
-                          {marketplace === 'US' ? '$' : 'CDN$ '}
-                          {Number(lowest).toFixed(2)}
-                        </Text>
-                      </Text>
                     ) : (
-                      <Text style={styles.noPriceText}>
-                        No sold prices scraped — the search pane will still show them.
-                      </Text>
+                      <View>
+                        {lowest !== null ? (
+                          <Text style={styles.lowestText}>
+                            Lowest sold match:{' '}
+                            <Text style={styles.lowestValue}>
+                              {marketplace === 'US' ? '$' : 'CDN$ '}
+                              {Number(lowest).toFixed(2)}
+                            </Text>
+                          </Text>
+                        ) : (
+                          <Text style={styles.noPriceText}>
+                            No sold prices read from that — the search pane will still show them.
+                          </Text>
+                        )}
+
+                        {sellThroughBand(comps?.sellThrough) ? (
+                          <View style={styles.sellThroughRow}>
+                            <View
+                              style={[
+                                styles.sellThroughDot,
+                                {
+                                  backgroundColor:
+                                    SELL_THROUGH_COLOURS[sellThroughBand(comps.sellThrough)]
+                                }
+                              ]}
+                            />
+                            <Text style={styles.sellThroughText}>
+                              Sell-through {comps.sellThrough}%
+                              {Number.isFinite(comps?.soldCount) && Number.isFinite(comps?.activeCount)
+                                ? ` · ${comps.soldCount} sold / ${comps.activeCount} listed`
+                                : ''}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
                     )}
                   </View>
 
@@ -444,6 +484,9 @@ const styles = StyleSheet.create({
   lowestText: { color: '#A0AEC0', fontSize: 13, fontWeight: '700' },
   lowestValue: { color: '#68D391', fontSize: 15, fontWeight: '900' },
   noPriceText: { color: '#718096', fontSize: 12, lineHeight: 17 },
+  sellThroughRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
+  sellThroughDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  sellThroughText: { color: '#A0AEC0', fontSize: 11, fontWeight: '700' },
 
   codeChip: {
     marginTop: 12,

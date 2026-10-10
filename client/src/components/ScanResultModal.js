@@ -15,7 +15,15 @@ import * as Clipboard from 'expo-clipboard';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { fetchEbaySoldLowest, launchEbaySold } from '../services/ebayService';
 import { buildEbayQuery } from '../services/ebayQuery';
+import { sellThroughBand } from '../services/ebayHtml';
 import EbayCompsModal from './EbayCompsModal';
+
+/**
+ * Sell-through is an estimate built from two search-result counts, so it is coloured to be read
+ * at a glance but never labelled with a word that would claim more than that. The thresholds are
+ * reseller convention (60 / 30), not anything eBay publishes.
+ */
+const SELL_THROUGH_COLOURS = { high: '#48BB78', medium: '#ECC94B', low: '#FC8181' };
 
 export default function ScanResultModal({ visible, item, onClose }) {
   const [copyFeedback, setCopyFeedback] = useState(null);
@@ -146,6 +154,10 @@ export default function ScanResultModal({ visible, item, onClose }) {
 
   // The URL already carries the barcode/title, so there is nothing to copy first.
   const handleOpenEbayComps = () => setShowEbayComps(true);
+
+  const ebayBand = sellThroughBand(ebayData.sellThrough);
+  const ebayCountsKnown =
+    Number.isFinite(ebayData.soldCount) && Number.isFinite(ebayData.activeCount);
 
   return (
     <Modal
@@ -340,15 +352,31 @@ export default function ScanResultModal({ visible, item, onClose }) {
                   <ActivityIndicator size="small" color="#ECC94B" />
                   <Text style={styles.ebayLoadingText}>Checking eBay sold comps...</Text>
                 </View>
-              ) : ebayData.price ? (
+              ) : ebayData.price || ebayBand ? (
                 <View style={styles.ebayPriceRow}>
-                  <View>
-                    <Text style={styles.ebayPriceValue}>
-                      {ebayData.currencyPrefix}{Number(ebayData.price).toFixed(2)}
-                    </Text>
+                  <View style={styles.ebayPriceColumn}>
+                    {ebayData.price ? (
+                      <Text style={styles.ebayPriceValue}>
+                        {ebayData.currencyPrefix}{Number(ebayData.price).toFixed(2)}
+                      </Text>
+                    ) : null}
                     <Text style={styles.ebayPriceSub}>
-                      Lowest sold match ({ebayData.matchedBy === 'barcode' ? 'ISBN' : 'title'})
+                      {ebayData.price
+                        ? `Lowest sold match (${ebayData.matchedBy === 'barcode' ? 'ISBN' : 'title'})`
+                        : 'No sold price read from that search'}
                     </Text>
+
+                    {ebayBand ? (
+                      <View style={styles.sellThroughRow}>
+                        <View style={[styles.sellThroughDot, { backgroundColor: SELL_THROUGH_COLOURS[ebayBand] }]} />
+                        <Text style={styles.sellThroughText}>
+                          Sell-through {ebayData.sellThrough}%
+                          {ebayCountsKnown
+                            ? ` · ${ebayData.soldCount} sold / ${ebayData.activeCount} listed`
+                            : ''}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                   <TouchableOpacity style={styles.ebayActionBtn} onPress={handleOpenEbayComps}>
                     <Text style={styles.ebayActionBtnText}>⚡ View Sold Comps</Text>
@@ -817,6 +845,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 4
+  },
+  ebayPriceColumn: {
+    flex: 1,
+    paddingRight: 10
+  },
+  sellThroughRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 5
+  },
+  sellThroughDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6
+  },
+  sellThroughText: {
+    color: '#A0AEC0',
+    fontSize: 11,
+    fontWeight: '700'
   },
   ebayPriceValue: {
     color: '#48BB78',
