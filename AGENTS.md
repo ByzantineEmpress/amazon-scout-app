@@ -215,7 +215,7 @@ Run all three of these before saying anything is done. Each proves something the
 
 ```bash
 # from the REPO ROOT
-npm test                      # 135 tests across 7 suites, no network needed
+npm test                      # 139 tests across 8 suites, no network needed
 
 cd client
 npx expo lint                 # 8 errors / 18 warnings at the time of writing, all pre-existing
@@ -224,7 +224,7 @@ rm -rf dist                   # proves Metro can bundle: imports resolve, no syn
 ```
 
 Per-suite counts at the time of writing, so drift is visible: gatingRules 15, releaseSigning 9,
-barcodeValidation 28, isbn 27, titleScan 24, ebayQuery 17, ebayHtml 15.
+barcodeValidation 28, isbn 27, titleScan 24, ebayQuery 17, ebayHtml 15, ebayWiring 4.
 
 - **`npm test`** covers the pure logic — validation, extraction, query building, HTML parsing and
   the gating rules.
@@ -412,6 +412,10 @@ worktree and the full history and reports locations only).
   redirect.
 - **Keep CLI output ASCII.** Emoji and box-drawing characters get mangled in captured output. The
   repo's own scripts are written to print ASCII for this reason.
+- **Do not edit source files with PowerShell text commands.** `Set-Content`, `Out-File` and `>`
+  re-encode the file (PS 5.1 defaults to UTF-16/ANSI), which silently corrupts the emoji and
+  accented characters all over this app. Use the editor tool, or if a change must be scripted, have
+  Node do it (`node -e "fs.writeFileSync(p, s.replace(...))"`), which round-trips UTF-8 safely.
 - `warning: in the working copy of '…', LF will be replaced by CRLF` is benign — ignore it.
 - Long commands: run them in the background and collect the result, rather than blocking. A CI
   build is 9–11 minutes.
@@ -458,6 +462,7 @@ number — never by ISBN or UPC.
 | Photo Comps searched for `EN71 ASTM F963 RoHS` | Compliance marks look exactly like product text | `titleScan.js` |
 | A sticker photo searched for `CUH-ZCT2U CUH-ZCT2U` | The model was both the guessed name and the appended model | `titleScan.js` |
 | Sell-through read **0%** when the count was merely unreadable | `Number(null)` is `0`, so a missing count was coerced into "nothing sold" | `ebayHtml.js` |
+| Sell-through showed **nowhere at all** | The component re-listed the response's fields when storing it and omitted the new ones, so the figures were fetched, parsed and rendered but never reached state. Every layer had its own passing test | `ScanResultModal.js`, guarded by `ebayWiring.test.mjs` |
 | The release script mis-parsed the first dirty file | `git status --porcelain` output was `.trim()`ed, eating the leading column | `scripts/release.mjs` |
 
 ---
@@ -469,6 +474,11 @@ Before you say a change is finished:
 - [ ] `npm test` passes from the repo root (and you added a test for the bug you fixed).
 - [ ] `npx expo lint` from `client/` shows **no new** errors or warnings.
 - [ ] `npx expo export --platform android --no-bytecode` succeeds.
+- [ ] **If the UI reads a field off a service response, something writes it.** The components have
+      no render tests, so a value that is fetched, parsed and rendered but never copied into state
+      passes every test in this repo and shows nothing on the phone. `ebayWiring.test.mjs` guards
+      the comps path; treat new data paths the same way, and prefer storing a response whole over
+      re-listing its fields.
 - [ ] Any new native module or `app.json` change was validated with a **dry run** (§5), not just
       assumed to build.
 - [ ] Camera behaviour was confirmed on a device, or you have said clearly that it was not.

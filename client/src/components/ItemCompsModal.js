@@ -104,11 +104,9 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
     try {
       const res = await fetchEbayLowestForQuery(search, marketplace);
       setLowest(res?.price ?? null);
-      setComps({
-        sellThrough: res?.sellThrough ?? null,
-        soldCount: res?.soldCount ?? null,
-        activeCount: res?.activeCount ?? null
-      });
+      // Keep the whole response: a field the service adds later then flows through without a
+      // second place to remember it. Hand-listing fields is how sell-through got dropped once.
+      setComps(res || null);
     } catch (_e) {
       setLowest(null);
       setComps(null);
@@ -346,6 +344,12 @@ export default function ItemCompsModal({ onClose, marketplace = 'CA' }) {
                                 : ''}
                             </Text>
                           </View>
+                        ) : lowest !== null ? (
+                          // Say so rather than showing nothing: silence is indistinguishable from
+                          // a feature that does not work.
+                          <Text style={styles.sellThroughUnavailable}>
+                            Sell-through unavailable for this search
+                          </Text>
                         ) : null}
                       </View>
                     )}
@@ -487,6 +491,7 @@ const styles = StyleSheet.create({
   sellThroughRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
   sellThroughDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   sellThroughText: { color: '#A0AEC0', fontSize: 11, fontWeight: '700' },
+  sellThroughUnavailable: { color: '#718096', fontSize: 11, fontWeight: '600', marginTop: 5 },
 
   codeChip: {
     marginTop: 12,

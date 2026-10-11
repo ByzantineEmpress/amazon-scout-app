@@ -57,11 +57,14 @@ export default function ScanResultModal({ visible, item, onClose }) {
     })
       .then((res) => {
         if (isMounted) {
+          // Spread the whole response rather than re-listing its fields. The service's shape is
+          // then the single source of truth: a field it returns reaches the UI without a second
+          // place that has to remember to copy it. Hand-listing fields here is what once left the
+          // sell-through numbers being fetched, parsed, rendered - and dropped on the floor.
           setEbayData({
             loading: false,
-            price: res?.price || null,
             currencyPrefix: res?.currencyPrefix || (item.marketplace === 'US' ? '$' : 'CDN$ '),
-            matchedBy: res?.matchedBy || null
+            ...res
           });
         }
       })
@@ -376,6 +379,12 @@ export default function ScanResultModal({ visible, item, onClose }) {
                             : ''}
                         </Text>
                       </View>
+                    ) : ebayData.price ? (
+                      // Say so rather than showing nothing: silence here is indistinguishable from
+                      // a feature that does not work.
+                      <Text style={styles.sellThroughUnavailable}>
+                        Sell-through unavailable for this search
+                      </Text>
                     ) : null}
                   </View>
                   <TouchableOpacity style={styles.ebayActionBtn} onPress={handleOpenEbayComps}>
@@ -865,6 +874,12 @@ const styles = StyleSheet.create({
     color: '#A0AEC0',
     fontSize: 11,
     fontWeight: '700'
+  },
+  sellThroughUnavailable: {
+    color: '#718096',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 5
   },
   ebayPriceValue: {
     color: '#48BB78',
