@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   Linking
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -32,7 +31,7 @@ const SELL_THROUGH_COLOURS = { high: '#48BB78', medium: '#ECC94B', low: '#FC8181
  * Every message carries the page URL so the caller can ignore anything that is not a search page
  * (a listing page the user navigated into has no result count at all).
  */
-function pageReader(kind) {
+function pageReader(kind, reportCategories) {
   return `
 (function () {
   function post(payload) {
@@ -50,14 +49,16 @@ function pageReader(kind) {
     }
   } catch (e) {}
   post(out);
-  try {
-    var links = document.querySelectorAll('a[href*="_sacat="]');
-    var items = [];
-    for (var j = 0; j < links.length && items.length < 25; j++) {
-      items.push({ href: links[j].getAttribute('href') || '', text: links[j].textContent || '' });
-    }
-    post({ type: 'categories', items: items, url: here });
-  } catch (e) {}
+  if (${reportCategories ? 'true' : 'false'}) {
+    try {
+      var links = document.querySelectorAll('a[href*="_sacat="]');
+      var items = [];
+      for (var j = 0; j < links.length && items.length < 25; j++) {
+        items.push({ href: links[j].getAttribute('href') || '', text: links[j].textContent || '' });
+      }
+      post({ type: 'categories', items: items, url: here });
+    } catch (e) {}
+  }
 })();
 true;
 `;
@@ -94,6 +95,7 @@ export default function EbayCompsModal({ onClose, query, marketplace = 'CA' }) {
   const [soldCount, setSoldCount] = useState(null);
   const [activeCount, setActiveCount] = useState(null);
   const [visibleReady, setVisibleReady] = useState(false);
+  const scopeApplied = useRef(false);
   const webRef = useRef(null);
 
   const soldUrl = getEbaySoldUrl(query, marketplace, category?.id);
@@ -120,13 +122,28 @@ export default function EbayCompsModal({ onClose, query, marketplace = 'CA' }) {
     if (!message || typeof message !== 'object') return;
     if (!String(message.url ?? '').includes('_nkw=')) return;
 
+    // A page that managed to run the reader has loaded, whichever callback fired last. This is the
+    // dependable end-of-load signal: onLoadEnd is skipped when a load is interrupted - eBay
+    // redirecting, for instance - which used to leave the page sitting under a loading scrim.
+    setLoading(false);
+
     if (message.type === 'soldCount') {
       setSoldCount(Number.isFinite(message.count) ? message.count : null);
     } else if (message.type === 'activeCount') {
       setActiveCount(Number.isFinite(message.count) ? message.count : null);
     } else if (message.type === 'categories') {
       const best = pickEbayCategory(message.items);
-      if (best) setSuggested(best);
+      if (best) {
+        setSuggested(best);
+        // Apply the first category eBay offers, without being asked. Reading it from the page is
+        // only worth doing if the search actually lands in that department; leaving it as an
+        // offer meant an unscoped search full of unrelated items. It is named in the header, one
+        // tap clears it, and clearing it is remembered for the rest of this visit.
+        if (!scopeApplied.current && !category) {
+          scopeApplied.current = true;
+          setCategory(best);
+        }
+      }
     }
   };
 
@@ -193,8 +210,7 @@ export default function EbayCompsModal({ onClose, query, marketplace = 'CA' }) {
         ) : (
           <Text style={styles.statusMuted}>
             {loading ? 'Sell-through: reading eBay…' : 'Sell-through unavailable for this search'}
-          </Text>
-        )}
+          </Text>        )}
 
         {category ? (
           <TouchableOpacity
@@ -238,7 +254,7 @@ export default function EbayCompsModal({ onClose, query, marketplace = 'CA' }) {
           thirdPartyCookiesEnabled
           allowsBackForwardNavigationGestures
           setSupportMultipleWindows={false}
-          injectedJavaScript={pageReader('soldCount')}
+          injectedJavaScript={pageReader('soldCount', true)}
           onMessage={handleMessage}
           onShouldStartLoadWithRequest={handleShouldStartLoad}
           onLoadStart={() => setLoading(true)}
@@ -269,17 +285,10 @@ export default function EbayCompsModal({ onClose, query, marketplace = 'CA' }) {
           sharedCookiesEnabled
           thirdPartyCookiesEnabled
           setSupportMultipleWindows={false}
-          injectedJavaScript={pageReader('activeCount')}
+          injectedJavaScript={pageReader('activeCount', false)}
           onMessage={handleMessage}
         />
       )}
-
-      {loading && !failed ? (
-        <View style={styles.loadingOverlay} pointerEvents="none">
-          <ActivityIndicator size="large" color="#ECC94B" />
-          <Text style={styles.loadingText}>Loading sold comps...</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -419,19 +428,6 @@ const styles = StyleSheet.create({
   webview: {
     flex: 1,
     backgroundColor: '#0F172A'
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    top: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)'
-  },
-  loadingText: {
-    color: '#ECC94B',
-    marginTop: 10,
-    fontSize: 13,
-    fontWeight: '700'
   },
   failedWrap: {
     flex: 1,
