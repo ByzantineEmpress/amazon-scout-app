@@ -34,8 +34,8 @@ function assertEqual(actual, expected, label) {
 
 // ebayCategory.js has no imports, so its source can be evaluated after dropping `export`.
 const source = fs.readFileSync(path.join(here, '..', 'src', 'services', 'ebayCategory.js'), 'utf8');
-const { pickEbayCategory, parsePageCount } = new Function(
-  `${source.replace(/^export /gm, '')}\nreturn { pickEbayCategory, parsePageCount };`
+const { pickEbayCategory, parsePageCount, categoryScope } = new Function(
+  `${source.replace(/^export /gm, '')}\nreturn { pickEbayCategory, parsePageCount, categoryScope };`
 )();
 
 /** A results page's links, in document order: the sidebar first, listings after. */
@@ -108,6 +108,27 @@ test('the first count on the page wins, not one from a listing title', () => {
     1234,
     'first wins'
   );
+});
+
+test('a category id is only used when it is a plain number', () => {
+  assertEqual(categoryScope('267'), '&_sacat=267', 'id');
+  assertEqual(categoryScope(156), '&_sacat=156', 'number');
+  assertEqual(categoryScope(' 267 '), '&_sacat=267', 'trimmed');
+});
+
+test('nothing is added when there is no category to scope to', () => {
+  assertEqual(categoryScope(null), '', 'null');
+  assertEqual(categoryScope(undefined), '', 'undefined');
+  assertEqual(categoryScope(''), '', 'empty');
+  // "All Categories" is the absence of a scope, not a scope.
+  assertEqual(categoryScope('0'), '', 'all categories');
+});
+
+test('anything that is not an id is refused, because it lands in a URL', () => {
+  assertEqual(categoryScope('267&_nkw=hacked'), '', 'would inject a parameter');
+  assertEqual(categoryScope('../../etc'), '', 'path');
+  assertEqual(categoryScope('1e5'), '', 'exponent');
+  assertEqual(categoryScope('999999999999999'), '', 'absurdly long');
 });
 
 console.log('');

@@ -3,6 +3,7 @@ import { Linking, Platform } from 'react-native';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Clipboard from 'expo-clipboard';
 import { buildEbayQuery } from './ebayQuery';
+import { categoryScope } from './ebayCategory';
 import {
   parseResultCount,
   parseSoldPrices,
@@ -19,16 +20,6 @@ export const EBAY_MOBILE_USER_AGENT =
 
 function ebayDomain(marketplace) {
   return marketplace === 'US' ? 'https://www.ebay.com' : 'https://www.ebay.ca';
-}
-
-/**
- * `_sacat` narrows a search to one eBay category. The id is validated rather than trusted: it
- * reaches this function from a page the app read, and a bad id would silently return no results at
- * all. "All Categories" (0) is the absence of a scope, not a scope.
- */
-function categoryScope(categoryId) {
-  const id = String(categoryId ?? '').trim();
-  return /^\d{1,10}$/.test(id) && id !== '0' ? `&_sacat=${id}` : '';
 }
 
 /**

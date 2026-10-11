@@ -19,6 +19,18 @@
 const ALL_CATEGORIES = '0';
 
 /**
+ * The `_sacat` fragment that narrows a search to one category, or '' to search everything.
+ *
+ * The id arrives from a page the app read and ends up inside a URL, so it is validated rather than
+ * trusted - both because anything else could inject another query parameter, and because a
+ * malformed id returns no results at all rather than worse ones.
+ */
+export function categoryScope(categoryId) {
+  const id = String(categoryId ?? '').trim();
+  return /^\d{1,10}$/.test(id) && id !== ALL_CATEGORIES ? `&_sacat=${id}` : '';
+}
+
+/**
  * Pick the category to offer from the links found on a results page.
  *
  * `candidates` is what the page reports: [{ href, text }], in document order. eBay's refinement

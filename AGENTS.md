@@ -215,7 +215,7 @@ Run all three of these before saying anything is done. Each proves something the
 
 ```bash
 # from the REPO ROOT
-npm test                      # 148 tests across 9 suites, no network needed
+npm test                      # 151 tests across 9 suites, no network needed
 
 cd client
 npx expo lint                 # 8 errors / 18 warnings at the time of writing, all pre-existing
@@ -224,7 +224,7 @@ rm -rf dist                   # proves Metro can bundle: imports resolve, no syn
 ```
 
 Per-suite counts at the time of writing, so drift is visible: gatingRules 15, releaseSigning 9,
-barcodeValidation 28, isbn 27, titleScan 24, ebayQuery 17, ebayHtml 15, ebayCategory 9,
+barcodeValidation 28, isbn 27, titleScan 24, ebayQuery 17, ebayHtml 15, ebayCategory 12,
 ebayWiring 4.
 
 - **`npm test`** covers the pure logic — validation, extraction, query building, HTML parsing and
