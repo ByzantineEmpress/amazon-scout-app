@@ -96,8 +96,8 @@ Two more paths run alongside it:
 
 ### The pure modules (and why that matters)
 
-`gatingRules.js`, `barcodeValidation.js`, `isbn.js`, `titleScan.js`, `ebayQuery.js` and
-`ebayHtml.js` are **dependency-free** — no `import` statements. The test files load them by
+`gatingRules.js`, `barcodeValidation.js`, `isbn.js`, `titleScan.js`, `ebayQuery.js`, `ebayHtml.js`
+and `ebayCategory.js` are **dependency-free** — no `import` statements. The test files load them by
 reading the source and stripping the `export` keywords, which only works while they stay
 self-contained. Keep them that way, and put any new pure logic in a module like them rather than
 in a component. See §6.
@@ -215,7 +215,7 @@ Run all three of these before saying anything is done. Each proves something the
 
 ```bash
 # from the REPO ROOT
-npm test                      # 139 tests across 8 suites, no network needed
+npm test                      # 148 tests across 9 suites, no network needed
 
 cd client
 npx expo lint                 # 8 errors / 18 warnings at the time of writing, all pre-existing
@@ -224,7 +224,8 @@ rm -rf dist                   # proves Metro can bundle: imports resolve, no syn
 ```
 
 Per-suite counts at the time of writing, so drift is visible: gatingRules 15, releaseSigning 9,
-barcodeValidation 28, isbn 27, titleScan 24, ebayQuery 17, ebayHtml 15, ebayWiring 4.
+barcodeValidation 28, isbn 27, titleScan 24, ebayQuery 17, ebayHtml 15, ebayCategory 9,
+ebayWiring 4.
 
 - **`npm test`** covers the pure logic — validation, extraction, query building, HTML parsing and
   the gating rules.
@@ -426,6 +427,22 @@ worktree and the full history and reports locations only).
 ---
 
 ## 10. Domain knowledge the code depends on
+
+**eBay refuses this app's own HTTP requests.** Verified directly: a request carrying the app's exact
+mobile user agent gets `HTTP 403` and a 1,832-byte "Error Page | eBay" — for search pages and browse
+pages alike, sold filter or not. So the inline eBay scrapes (`fetchEbaySoldLowest`,
+`fetchEbayLowestForQuery`, and the sell-through counts) are **best-effort and usually return
+nothing**, and any feature built on them must degrade to something useful rather than promising a
+figure it cannot get. The comps pane works because a `WebView` is a real browser engine: that is
+where eBay's data is actually available, which is why sell-through and category narrowing are read
+there (`EbayCompsModal` → `injectedJavaScript` → `onMessage`). Before designing anything around eBay
+data, decide which side of that line it sits on — and do not conclude a feature works from a test
+suite, because none of these tests touch the network.
+
+**eBay category ids are not hardcoded, on purpose.** A wrong `_sacat` returns no results at all,
+silently, and eBay refuses the requests that would let these ids be checked from a development
+machine. The ids come from the refinement links on the results page the pane already loads
+(`services/ebayCategory.js`), and the name is shown before the user applies it.
 
 **Books and barcodes.** Book barcodes are always numeric EAN-13 beginning `978` or `979`. The
 letter `X` appears in *printed* ISBN-10s (and in ASINs derived from them) but **never inside a

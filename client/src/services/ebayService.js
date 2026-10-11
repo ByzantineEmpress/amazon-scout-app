@@ -22,18 +22,28 @@ function ebayDomain(marketplace) {
 }
 
 /**
+ * `_sacat` narrows a search to one eBay category. The id is validated rather than trusted: it
+ * reaches this function from a page the app read, and a bad id would silently return no results at
+ * all. "All Categories" (0) is the absence of a scope, not a scope.
+ */
+function categoryScope(categoryId) {
+  const id = String(categoryId ?? '').trim();
+  return /^\d{1,10}$/.test(id) && id !== '0' ? `&_sacat=${id}` : '';
+}
+
+/**
  * Sold & completed listings for a query, cheapest first.
  * The query comes from ebayQuery.js, which is where the choice of title over ISBN is explained.
  */
-export function getEbaySoldUrl(query, marketplace = 'CA') {
+export function getEbaySoldUrl(query, marketplace = 'CA', categoryId = null) {
   const keywords = String(query ?? '').trim();
-  return `${ebayDomain(marketplace)}/sch/i.html?_nkw=${encodeURIComponent(keywords)}&LH_Sold=1&LH_Complete=1&_sop=15`;
+  return `${ebayDomain(marketplace)}/sch/i.html?_nkw=${encodeURIComponent(keywords)}&LH_Sold=1&LH_Complete=1&_sop=15${categoryScope(categoryId)}`;
 }
 
 /** Currently-listed listings for the same query, which is the other half of sell-through. */
-export function getEbayActiveUrl(query, marketplace = 'CA') {
+export function getEbayActiveUrl(query, marketplace = 'CA', categoryId = null) {
   const keywords = String(query ?? '').trim();
-  return `${ebayDomain(marketplace)}/sch/i.html?_nkw=${encodeURIComponent(keywords)}`;
+  return `${ebayDomain(marketplace)}/sch/i.html?_nkw=${encodeURIComponent(keywords)}${categoryScope(categoryId)}`;
 }
 
 /** Fetch a search page. Returns '' rather than throwing, so a failure degrades quietly. */
