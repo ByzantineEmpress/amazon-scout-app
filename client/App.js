@@ -240,10 +240,11 @@ export default function App() {
     }
   }, [permission]);
 
-  // The rebuilt interface: a tabbed shell (see src/app/AppShell.js). Opt-in while it reaches
-  // parity, so the screen below - the one in day-to-day use - is never at the mercy of a redesign
-  // that has not been on a device yet. One setting switches between them.
-  if (settings.uiV2 === true) {
+  // The rebuilt interface is the app now: a tabbed shell (see src/app/AppShell.js) built from one
+  // design system. The old single-screen layout remains behind a setting for exactly one release,
+  // as an escape hatch while the new interface settles on real devices. `uiV2 === false` is the
+  // explicit opt-out, so existing settings (which have no `uiV2` key) get the new interface.
+  if (settings.uiV2 !== false) {
     return <AppShell onSettingsChange={setSettings} />;
   }
 

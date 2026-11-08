@@ -245,10 +245,10 @@ export default function SettingsScreen({ onClose, onSettingsChange }) {
       <SectionTitle>Interface</SectionTitle>
       <Card padded={false}>
         <ToggleRow
-          label="New interface (in progress)"
-          hint="A tabbed layout — Scan, Comps, History, Settings. The rebuilt screens use the new design; the rest still look like the old ones."
-          value={settings.uiV2 === true}
-          onChange={(value) => apply({ uiV2: value })}
+          label="Classic interface (temporary)"
+          hint="The old single-screen layout, kept for one release in case anything about the new one gets in your way. It will be removed."
+          value={settings.uiV2 === false}
+          onChange={(value) => apply({ uiV2: !value })}
           last
         />
       </Card>

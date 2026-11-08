@@ -16,7 +16,7 @@ import {
 import { palette, space, type, radius, layout } from '../design/theme';
 import { Button, Chip, Screen, EmptyState, Loading } from '../design/primitives';
 import ManualEntryDialog from './ManualEntryDialog';
-import IsbnScanModal from '../components/IsbnScanModal';
+import IsbnToolScreen from './IsbnToolScreen';
 
 const ZOOM_STEPS = [0, 0.07, 0.15];
 const ZOOM_LABELS = ['1x', '1.5x', '2x'];
@@ -332,7 +332,7 @@ export default function ScanScreen({ onNavigate, onScanned }) {
       ) : null}
 
       {isbnVisible ? (
-        <IsbnScanModal
+        <IsbnToolScreen
           onClose={() => setIsbnVisible(false)}
           onLookup={(code) => {
             setIsbnVisible(false);
