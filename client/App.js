@@ -25,6 +25,7 @@ import ManualEntryModal from './src/components/ManualEntryModal';
 import IsbnScanModal from './src/components/IsbnScanModal';
 import ItemCompsModal from './src/components/ItemCompsModal';
 import { checkForUpdate } from './src/services/updateService';
+import AppShell from './src/app/AppShell';
 import {
   SCANNER_BARCODE_TYPES,
   DEFAULT_SCANNER_BARCODE_TYPES,
@@ -238,6 +239,13 @@ export default function App() {
       requestPermission();
     }
   }, [permission]);
+
+  // The rebuilt interface: a tabbed shell (see src/app/AppShell.js). Opt-in while it reaches
+  // parity, so the screen below - the one in day-to-day use - is never at the mercy of a redesign
+  // that has not been on a device yet. One setting switches between them.
+  if (settings.uiV2 === true) {
+    return <AppShell onSettingsChange={setSettings} />;
+  }
 
   if (!permission) {
     return (

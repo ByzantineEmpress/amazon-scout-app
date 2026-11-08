@@ -242,6 +242,17 @@ export default function SettingsScreen({ onClose, onSettingsChange }) {
         ) : null}
       </Card>
 
+      <SectionTitle>Interface</SectionTitle>
+      <Card padded={false}>
+        <ToggleRow
+          label="New interface (in progress)"
+          hint="A tabbed layout — Scan, Comps, History, Settings. The rebuilt screens use the new design; the rest still look like the old ones."
+          value={settings.uiV2 === true}
+          onChange={(value) => apply({ uiV2: value })}
+          last
+        />
+      </Card>
+
       <SectionTitle>Your data</SectionTitle>
       <Card padded={false}>
         <ActionRow
