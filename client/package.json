@@ -28,7 +28,7 @@
     "web": "expo start --web",
     "build:android": "eas build -p android --profile preview",
     "build:ios": "eas build -p ios --profile preview",
-    "lint": "expo lint"
+    "lint": "eslint . --ext .js,.jsx,.mjs"
   },
   "private": true,
   "devDependencies": {

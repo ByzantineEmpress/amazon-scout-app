@@ -16,7 +16,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 
 import { scanBarcode } from './src/services/api';
-import { getSettings, addScanToHistory, getOfflineQueue } from './src/services/storage';
+import { getSettings, saveSettings, addScanToHistory, getOfflineQueue } from './src/services/storage';
 import ScanResultModal from './src/components/ScanResultModal';
 import SettingsModal from './src/components/SettingsModal';
 import HistoryModal from './src/components/HistoryModal';

@@ -46,8 +46,10 @@ client/                          the app (all of it)
   plugins/
     withReleaseSigning.js        points the release buildType at a real keystore
     withAndroidQueries.js        lets the app launch the Amazon/eBay Android apps
-  src/components/*Modal.js       ScanResult, Settings, History, ManualEntry, IsbnScan,
-                                 ItemComps, EbayComps, OfflineQueue
+  src/components/*Modal.js       modal wrappers, plus the older screens not yet rebuilt
+  src/screens/                   full screens (History, Settings, and the rest of the redesign)
+  src/design/theme.js            design tokens: colour by role, spacing, radii, type scale
+  src/design/primitives.js       shared UI: Screen, Header, Card, Button, Chip, Badge, Stat, Field
   src/services/                  all non-UI logic (see §3)
   test/*.test.mjs                Node test files, run from the repo root
 scripts/
@@ -163,7 +165,7 @@ full-screen preview instead — that arrangement also gives ML Kit a larger imag
 `ScanResultModal` has an early `return null` when there is no item. An effect added *below* it
 meant the component ran a different number of hooks between renders, and the app **crashed the
 moment a scan set the item** (v1.0.9). ESLint's `react-hooks/rules-of-hooks` catches this — it is
-the single most valuable check in `npx expo lint`. Keep the guard below all hooks and keep the
+the single most valuable check in `npm run lint`. Keep the guard below all hooks and keep the
 comment that says so.
 
 ### 4.6 Scrapes must degrade, never throw
@@ -218,10 +220,15 @@ Run all three of these before saying anything is done. Each proves something the
 npm test                      # 151 tests across 9 suites, no network needed
 
 cd client
-npx expo lint                 # 8 errors / 18 warnings at the time of writing, all pre-existing
+npm run lint                  # eslint over the whole project: 6 errors / 30 warnings at the time of writing
 npx expo export --platform android --no-bytecode --output-dir dist
 rm -rf dist                   # proves Metro can bundle: imports resolve, no syntax errors
 ```
+
+**Use `npm run lint`, not `npx expo lint`.** Expo's own lint command reports only the files it
+discovers under the usual source directories and **silently skips `App.js` and the test files** —
+which is how a call to an unimported `saveSettings` shipped in the marketplace pill. `npm run lint`
+is `eslint .`, which covers everything.
 
 Per-suite counts at the time of writing, so drift is visible: gatingRules 15, releaseSigning 9,
 barcodeValidation 28, isbn 27, titleScan 24, ebayQuery 17, ebayHtml 15, ebayCategory 12,
@@ -229,11 +236,11 @@ ebayWiring 4.
 
 - **`npm test`** covers the pure logic — validation, extraction, query building, HTML parsing and
   the gating rules.
-- **`npx expo lint`** catches hook violations and undefined variables. It earned its place by
-  catching a leftover `barcode` reference after a prop rename, and by reproducing the v1.0.9
-  crash. Treat the numbers above as a reference point rather than a contract: **run lint before
-  and after your change and make sure you added nothing**, and leave the pre-existing findings
-  alone unless asked to clean them up.
+- **`npm run lint`** catches hook violations, undefined variables and unused imports. It earned its
+  place by catching a leftover `barcode` reference after a prop rename, and by reproducing the
+  v1.0.9 crash. Treat the numbers above as a reference point rather than a contract: **run lint
+  before and after your change and make sure you added nothing**, and leave the pre-existing
+  findings alone unless asked to clean them up.
 - **`npx expo export`** is the only local check that the app actually builds as a bundle.
 
 Stack traces are useless without source maps in a release build, so prefer adding a test over
@@ -489,7 +496,7 @@ number — never by ISBN or UPC.
 Before you say a change is finished:
 
 - [ ] `npm test` passes from the repo root (and you added a test for the bug you fixed).
-- [ ] `npx expo lint` from `client/` shows **no new** errors or warnings.
+- [ ] `npm run lint` from `client/` shows **no new** errors or warnings.
 - [ ] `npx expo export --platform android --no-bytecode` succeeds.
 - [ ] **If the UI reads a field off a service response, something writes it.** The components have
       no render tests, so a value that is fetched, parsed and rendered but never copied into state
