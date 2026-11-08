@@ -84,7 +84,7 @@ export default function AppShell({ onSettingsChange }) {
           <>
             <View style={styles.content}>
               {tab === 'scan' ? <ScanScreen onNavigate={setTab} onScanned={setItem} /> : null}
-              {tab === 'comps' ? <CompsScreen onNavigate={setTab} /> : null}
+              {tab === 'comps' ? <CompsScreen /> : null}
               {tab === 'history' ? <HistoryScreen onItemSelect={setItem} /> : null}
               {tab === 'settings' ? <SettingsScreen onSettingsChange={onSettingsChange} /> : null}
             </View>

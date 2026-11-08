@@ -186,12 +186,13 @@ export function EmptyState({ icon, title, body, action }) {
   );
 }
 
-/** A labelled text field. */
-export function Field({ label, hint, style, ...props }) {
+/** A labelled text field. Forwards its ref, so callers can focus it. */
+export const Field = React.forwardRef(function Field({ label, hint, style, ...props }, ref) {
   return (
     <View style={style}>
       {label ? <Text style={[styles.text, type.tiny, styles.faint, styles.fieldLabel]}>{label}</Text> : null}
       <TextInput
+        ref={ref}
         style={[styles.text, styles.field]}
         placeholderTextColor={palette.textFaint}
         {...props}
@@ -199,7 +200,7 @@ export function Field({ label, hint, style, ...props }) {
       {hint ? <Text style={[styles.text, type.small, styles.muted, styles.fieldHint]}>{hint}</Text> : null}
     </View>
   );
-}
+});
 
 /** A section heading inside a screen. */
 export function SectionTitle({ children, right }) {
