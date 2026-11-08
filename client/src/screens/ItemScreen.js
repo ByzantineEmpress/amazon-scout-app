@@ -15,7 +15,7 @@ import {
 } from '../design/primitives';
 import { palette, space, type, layout } from '../design/theme';
 import { buildEbayQuery } from '../services/ebayQuery';
-import EbayCompsModal from '../components/EbayCompsModal';
+import CompsPane from './CompsPane';
 
 /** Verdicts are advisory, so they get the tone of a warning at most - never a green light. */
 function toneForStatus(status) {
@@ -200,7 +200,7 @@ export default function ItemScreen({ item, onClose }) {
       <Button label="Scan next" onPress={onClose} style={styles.doneButton} />
 
       {compsVisible ? (
-        <EbayCompsModal
+        <CompsPane
           onClose={() => setCompsVisible(false)}
           query={query}
           marketplace={item.marketplace}

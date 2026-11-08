@@ -15,7 +15,7 @@ import {
 } from '../services/barcodeValidation';
 import { palette, space, type, radius, layout } from '../design/theme';
 import { Button, Chip, Screen, EmptyState, Loading } from '../design/primitives';
-import ManualEntryModal from '../components/ManualEntryModal';
+import ManualEntryDialog from './ManualEntryDialog';
 import IsbnScanModal from '../components/IsbnScanModal';
 
 const ZOOM_STEPS = [0, 0.07, 0.15];
@@ -321,14 +321,15 @@ export default function ScanScreen({ onNavigate, onScanned }) {
       {/* The result is a screen in the shell, not a modal here: the shell swaps the tabs for it,
           which also releases this camera. */}
 
-      <ManualEntryModal
-        visible={manualVisible}
-        onClose={() => setManualVisible(false)}
-        onSubmit={(code) => {
-          setManualVisible(false);
-          lookUp(code);
-        }}
-      />
+      {manualVisible ? (
+        <ManualEntryDialog
+          onClose={() => setManualVisible(false)}
+          onSubmit={(code) => {
+            setManualVisible(false);
+            lookUp(code);
+          }}
+        />
+      ) : null}
 
       {isbnVisible ? (
         <IsbnScanModal

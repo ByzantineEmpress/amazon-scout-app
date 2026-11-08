@@ -18,7 +18,7 @@ import { sellThroughBand } from '../services/ebayHtml';
 import { getSettings } from '../services/storage';
 import { palette, space, type, layout } from '../design/theme';
 import { Card, Button, Field, Chip, Badge, Loading } from '../design/primitives';
-import EbayCompsModal from '../components/EbayCompsModal';
+import CompsPane from './CompsPane';
 
 /**
  * The OCR module is required lazily. It is native, its entry point throws where the native code is
@@ -307,7 +307,7 @@ export default function CompsScreen() {
       </KeyboardAvoidingView>
 
       {compsVisible ? (
-        <EbayCompsModal
+        <CompsPane
           onClose={() => setCompsVisible(false)}
           query={query}
           marketplace={marketplace}
