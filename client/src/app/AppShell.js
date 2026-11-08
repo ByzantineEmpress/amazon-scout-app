@@ -6,6 +6,7 @@ import ScanScreen from '../screens/ScanScreen';
 import CompsScreen from '../screens/CompsScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ItemScreen from '../screens/ItemScreen';
 
 const TABS = [
   { key: 'scan', label: 'Scan', icon: '📷' },
@@ -53,9 +54,17 @@ function TabBar({ current, onChange }) {
  */
 export default function AppShell({ onSettingsChange }) {
   const [tab, setTab] = useState('scan');
+  // One item at a time, shown over the tabs. Because the item replaces the tab content rather than
+  // covering it, the scanner unmounts while a result is open - so its camera is released and no
+  // scan can fire behind the result.
+  const [item, setItem] = useState(null);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (item) {
+        setItem(null);
+        return true;
+      }
       if (tab !== 'scan') {
         setTab('scan');
         return true;
@@ -63,20 +72,26 @@ export default function AppShell({ onSettingsChange }) {
       return false;
     });
     return () => subscription.remove();
-  }, [tab]);
+  }, [item, tab]);
 
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" backgroundColor={palette.bg} />
       <View style={styles.root}>
-        <View style={styles.content}>
-          {tab === 'scan' ? <ScanScreen onNavigate={setTab} /> : null}
-          {tab === 'comps' ? <CompsScreen onNavigate={setTab} /> : null}
-          {tab === 'history' ? <HistoryScreen /> : null}
-          {tab === 'settings' ? <SettingsScreen onSettingsChange={onSettingsChange} /> : null}
-        </View>
+        {item ? (
+          <ItemScreen item={item} onClose={() => setItem(null)} />
+        ) : (
+          <>
+            <View style={styles.content}>
+              {tab === 'scan' ? <ScanScreen onNavigate={setTab} onScanned={setItem} /> : null}
+              {tab === 'comps' ? <CompsScreen onNavigate={setTab} /> : null}
+              {tab === 'history' ? <HistoryScreen onItemSelect={setItem} /> : null}
+              {tab === 'settings' ? <SettingsScreen onSettingsChange={onSettingsChange} /> : null}
+            </View>
 
-        <TabBar current={tab} onChange={setTab} />
+            <TabBar current={tab} onChange={setTab} />
+          </>
+        )}
       </View>
     </SafeAreaProvider>
   );

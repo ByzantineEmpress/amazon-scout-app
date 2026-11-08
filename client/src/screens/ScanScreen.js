@@ -15,7 +15,6 @@ import {
 } from '../services/barcodeValidation';
 import { palette, space, type, radius, layout } from '../design/theme';
 import { Button, Chip, Screen, EmptyState, Loading } from '../design/primitives';
-import ScanResultModal from '../components/ScanResultModal';
 import ManualEntryModal from '../components/ManualEntryModal';
 import IsbnScanModal from '../components/IsbnScanModal';
 
@@ -29,7 +28,7 @@ const ZOOM_LABELS = ['1x', '1.5x', '2x'];
  * frames in the same place, debounce, look it up, remember it in history - because that gate is
  * what stops a misread becoming a purchased pallet. Only the presentation is new.
  */
-export default function ScanScreen({ onNavigate }) {
+export default function ScanScreen({ onNavigate, onScanned }) {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -46,8 +45,6 @@ export default function ScanScreen({ onNavigate }) {
 
   const [scanning, setScanning] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [item, setItem] = useState(null);
-  const [resultVisible, setResultVisible] = useState(false);
   const [pendingCode, setPendingCode] = useState('');
   const [rejected, setRejected] = useState(null);
   const [offlineCount, setOfflineCount] = useState(0);
@@ -119,18 +116,18 @@ export default function ScanScreen({ onNavigate }) {
     setTimeout(() => setAutofocus('on'), 60);
   };
 
-  /** Look an item up and show it. Shared by the scanner, manual entry and the ISBN tool. */
+  /** Look an item up and hand it to the shell, which shows it over the tabs. */
   const lookUp = async (code) => {
     setLoading(true);
     try {
       const result = await scanBarcode(code, settings.marketplace || 'CA');
       setLoading(false);
-      setItem(result.data);
-      setResultVisible(true);
       buzz(result.data.status);
+      // History first, so the row is there when the user comes back from the result.
       await addScanToHistory(result.data);
       const queue = await getOfflineQueue();
       setOfflineCount(Array.isArray(queue) ? queue.length : 0);
+      if (onScanned) onScanned(result.data);
     } catch (_e) {
       setLoading(false);
       setScanning(true);
@@ -171,12 +168,6 @@ export default function ScanScreen({ onNavigate }) {
     lastTime.current = now;
     setScanning(false);
     await lookUp(verdict.code);
-  };
-
-  const closeResult = () => {
-    setResultVisible(false);
-    setItem(null);
-    setTimeout(() => setScanning(true), 400);
   };
 
   const cycleMarketplace = () => {
@@ -327,8 +318,8 @@ export default function ScanScreen({ onNavigate }) {
         </View>
       </View>
 
-      {/* The result view is still the old modal; the unified one is the next step of the rebuild. */}
-      <ScanResultModal visible={resultVisible} item={item} onClose={closeResult} />
+      {/* The result is a screen in the shell, not a modal here: the shell swaps the tabs for it,
+          which also releases this camera. */}
 
       <ManualEntryModal
         visible={manualVisible}
