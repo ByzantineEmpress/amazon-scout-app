@@ -20,6 +20,7 @@ import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { launchEditor } from './editor.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP_JSON = path.join(root, 'client', 'app.json');
@@ -172,8 +173,7 @@ function openEditor(file) {
       : ['nano', 'vi'];
 
   for (const editor of editors) {
-    const res = spawnSync(`${editor} "${file}"`, { cwd: root, shell: true, stdio: 'inherit' });
-    if (res.status === 0) return true;
+    if (launchEditor(editor, file, root)) return true;
     console.log(`  (could not launch "${editor}")`);
   }
   return false;
@@ -196,7 +196,7 @@ function ensureNotesWritten() {
 
   console.log(`\n  Opening ${rel(notesPath)} - save and close it when you are done.\n`);
   if (!openEditor(notesPath)) {
-    die(`Could not launch an editor. Set the EDITOR environment variable, or edit\n${rel(notesPath)} by hand and re-run.`);
+    die(`Could not launch an editor. Set EDITOR to an executable path (use a wrapper for flags), or edit\n${rel(notesPath)} by hand and re-run.`);
   }
 
   body = readFileSync(notesPath, 'utf8');
